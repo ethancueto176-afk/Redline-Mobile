@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,6 +21,12 @@ button{cursor:pointer}
 #jump,#fire{position:absolute;right:22px;width:76px;height:76px;border-radius:50%;border:2px solid white;background:#b5122c;color:white;font-weight:bold;pointer-events:auto;touch-action:none}
 #jump{bottom:30px}#fire{bottom:120px;background:#e51b35}
 #hint{position:absolute;right:10px;bottom:205px;font-size:11px;color:#ddd}
+#crosshair{position:fixed;left:50%;top:50%;width:34px;height:34px;transform:translate(-50%,-50%);z-index:9;display:none;pointer-events:none}
+#crosshair:before,#crosshair:after{content:"";position:absolute;background:#fff;box-shadow:0 0 5px #ff1735}
+#crosshair:before{width:2px;height:34px;left:16px;top:0}
+#crosshair:after{height:2px;width:34px;top:16px;left:0}
+#crosshair .ring{position:absolute;inset:7px;border:2px solid #ff263f;border-radius:50%;background:#08080855;box-shadow:0 0 8px #ff1735}
+#crosshair .dot{position:absolute;width:4px;height:4px;left:15px;top:15px;border-radius:50%;background:#fff;box-shadow:0 0 5px #ff263f}
 </style>
 </head>
 <body>
@@ -41,6 +46,7 @@ button{cursor:pointer}
  <div id="hint">DRAG RIGHT SIDE TO LOOK</div>
 </div>
 <div id="status">REDLINE ARENA — READY</div>
+<div id="crosshair" aria-hidden="true"><div class="ring"></div><div class="dot"></div></div>
 
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
@@ -53,7 +59,7 @@ import {
  getAuth,signInAnonymously,setPersistence,browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
 
-/* FIREBASE CONFIGURATION */
+/* FIREBASE */
 const firebaseConfig={
  apiKey:"AIzaSyCvB7N_XK2kLYhwn8xwHI5It4TS7dMjKQk",
  authDomain:"redline-arena.firebaseapp.com",
@@ -63,50 +69,108 @@ const firebaseConfig={
  appId:"1:94653220727:web:ec7d1fe122a000bb1b4372",
  measurementId:"G-CXG70DQ206"
 };
-
 const app=initializeApp(firebaseConfig);
 const db=getFirestore(app);
 const auth=getAuth(app);
 
 let ready=false;
+let profileReady=false;
+let profileSaveQueue=Promise.resolve();
+
+function status(s){document.getElementById("status").textContent=s;}
+
 const authReady=setPersistence(auth,browserLocalPersistence)
  .then(()=>signInAnonymously(auth))
- .then(()=>{
+ .then(async()=>{
   ready=true;
-  status("PLAYER RECOGNIZED");
+  await loadPlayerProfile();
+  profileReady=true;
+  status("PLAYER RECOGNIZED — PROFILE LOADED");
  })
  .catch(e=>{
+  profileReady=true;
   status("FIREBASE ERROR: "+e.message);
-  console.error("Firebase authentication:",e);
+  console.error("Firebase:",e);
  });
 
-/* PLAYER ACCOUNT */
+/* PLAYER PROFILE AND PERSISTENT PURCHASES */
 let money=Number(localStorage.getItem("redlineMoney")||0);
 let health=100;
+let unlockedWeapons=["PISTOL"];
+let equippedWeapon="PISTOL";
+let baseTurretLevel=0;
+let baseShieldLevel=0;
+
+const weaponList=[
+ {name:"PISTOL",price:0,damage:25,delay:350},
+ {name:"SHOTGUN",price:500,damage:90,delay:750},
+ {name:"RAPID BLASTER",price:1000,damage:40,delay:130},
+ {name:"ASSAULT RIFLE",price:2000,damage:65,delay:180},
+ {name:"SNIPER RIFLE",price:3500,damage:250,delay:950},
+ {name:"MINIGUN",price:5000,damage:35,delay:65}
+];
 
 function updateHUD(){
  document.getElementById("money").textContent="MONEY: $"+money.toLocaleString();
  document.getElementById("health").textContent="HEALTH: "+health;
- document.getElementById("zombieInfo").textContent=
-  mode==="ZOMBIE"||mode==="ZOMBIE_FRIENDS"?
-  "LEVEL "+zombieLevel+"  |  KILLS "+zombieKills+"/"+zombieKillsRequired(zombieLevel):"";
+}
+
+function savePlayerProfile(){
+ localStorage.setItem("redlineMoney",String(money));
+ localStorage.setItem("redlineWeapons",JSON.stringify(unlockedWeapons));
+ localStorage.setItem("redlineEquipped",equippedWeapon);
+ localStorage.setItem("redlineTurrets",String(baseTurretLevel));
+ localStorage.setItem("redlineShields",String(baseShieldLevel));
+
+ if(!auth.currentUser)return Promise.resolve();
+
+ const uid=auth.currentUser.uid;
+ const data={
+  money,unlockedWeapons,equippedWeapon,
+  baseTurretLevel,baseShieldLevel,
+  updatedAt:serverTimestamp()
+ };
+
+ profileSaveQueue=profileSaveQueue
+  .then(()=>setDoc(doc(db,"players",uid),data,{merge:true}))
+  .catch(e=>console.warn("Profile save failed:",e.message));
+
+ return profileSaveQueue;
+}
+
+async function loadPlayerProfile(){
+ if(!auth.currentUser)return;
+ try{
+  const snap=await getDoc(doc(db,"players",auth.currentUser.uid));
+  if(snap.exists()){
+   const p=snap.data();
+   money=Math.max(0,Number(p.money??money));
+   unlockedWeapons=Array.isArray(p.unlockedWeapons)?p.unlockedWeapons:["PISTOL"];
+   if(!unlockedWeapons.includes("PISTOL"))unlockedWeapons.unshift("PISTOL");
+   equippedWeapon=unlockedWeapons.includes(p.equippedWeapon)?p.equippedWeapon:"PISTOL";
+   baseTurretLevel=Math.max(0,Number(p.baseTurretLevel)||0);
+   baseShieldLevel=Math.max(0,Number(p.baseShieldLevel)||0);
+  }else{
+   await savePlayerProfile();
+  }
+  updateHUD();
+ }catch(e){
+  console.warn("Could not load cloud profile:",e.message);
+ }
 }
 
 function earnMoney(amount){
  money+=amount;
- localStorage.setItem("redlineMoney",money);
+ savePlayerProfile();
  updateHUD();
 }
 
-function status(s){
- document.getElementById("status").textContent=s;
-}
 updateHUD();
 
 /* THREE.JS WORLD */
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x090b12);
-scene.fog=new THREE.Fog(0x090b12,18,45);
+scene.fog=new THREE.Fog(0x090b12,18,65);
 
 const rig=new THREE.Group();
 scene.add(rig);
@@ -124,7 +188,6 @@ renderer.domElement.style.touchAction="none";
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x333344,2));
-
 const redLight=new THREE.PointLight(0xff1735,35,25);
 redLight.position.set(0,4,-3);
 scene.add(redLight);
@@ -153,13 +216,9 @@ function box(w,h,d,color,x,y,z,parent=scene){
  return m;
 }
 
-function wall(x,y,z,w,h,d){box(w,h,d,0x252832,x,y,z);}
-wall(0,2,-11,18,4,.3);
-wall(-9,2,-2,.3,4,18);
-wall(9,2,-2,.3,4,18);
-wall(0,4,-2,18,.3,18);
+function wall(x,y,z,w,h,d){return box(w,h,d,0x252832,x,y,z);}
 
-/* COMPUTER MENU */
+/* COMPUTER AND MENU */
 const computer=new THREE.Group();
 computer.position.set(0,0,-7);
 scene.add(computer);
@@ -221,6 +280,7 @@ let syncStop=null;
 let remotePlayers={};
 
 function showMenu(){
+ document.getElementById("crosshair").style.display="none";
  stopZombieMode();
  if(roomStop){roomStop();roomStop=null;}
  if(syncStop){syncStop();syncStop=null;}
@@ -228,6 +288,7 @@ function showMenu(){
  remotePlayers={};
  mode="MENU";
  computer.position.set(0,0,-7);
+ computer.visible=true;
  clearButtons();
  screenText("CHOOSE YOUR GAME");
 
@@ -264,7 +325,7 @@ function showPvpMenu(){
  addButton("BACK",1.0,showMenu);
 }
 
-/* ZOMBIE MODE MENU */
+/* ZOMBIE MENU */
 function showZombieMenu(){
  clearButtons();
  mode="ZOMBIE_MENU";
@@ -276,7 +337,7 @@ function showZombieMenu(){
  status("ZOMBIE MODE — CHOOSE HOW TO PLAY");
 }
 
-/* FIREBASE MULTIPLAYER ROOMS */
+/* FIREBASE MULTIPLAYER */
 function newCode(){return String(Math.floor(1000+Math.random()*9000));}
 
 async function createRoom(visibility,gameType="PVP"){
@@ -285,8 +346,7 @@ async function createRoom(visibility,gameType="PVP"){
   if(!auth.currentUser)throw Error("PLAYER NOT SIGNED IN");
   status("CREATING ROOM...");
   for(let i=0;i<12;i++){
-   const code=newCode();
-   const ref=doc(db,"rooms",code);
+   const code=newCode(),ref=doc(db,"rooms",code);
    if((await getDoc(ref)).exists())continue;
    await setDoc(ref,{
     code,hostUid:auth.currentUser.uid,
@@ -294,9 +354,7 @@ async function createRoom(visibility,gameType="PVP"){
     visibility,status:"open",gameType,
     positions:{},createdAt:serverTimestamp()
    });
-   roomCode=code;
-   openRoom(code);
-   return;
+   roomCode=code;openRoom(code);return;
   }
   status("COULD NOT CREATE ROOM");
  }catch(e){status("ROOM ERROR: "+e.message);}
@@ -316,15 +374,13 @@ async function joinRoom(code){
   if(players.length>10)throw Error("ROOM IS FULL");
   tx.update(ref,{players});
  });
- roomCode=code;
- openRoom(code);
+ roomCode=code;openRoom(code);
 }
 
 async function joinPrivate(){
  const code=prompt("Enter the 4-digit room code:");
  if(!code)return;
- try{await joinRoom(code.trim());}
- catch(e){status(e.message);}
+ try{await joinRoom(code.trim());}catch(e){status(e.message);}
 }
 
 async function joinPublic(){
@@ -345,21 +401,17 @@ async function joinPublic(){
 
 function openRoom(code){
  if(roomStop)roomStop();
- clearButtons();
- mode="WAITING";
+ clearButtons();mode="WAITING";
  screenText("ROOM CODE: "+code);
  addButton("START MATCH",1.35,startMatch);
  addButton("LEAVE ROOM",1.0,leaveRoom);
- const ref=doc(db,"rooms",code);
- roomStop=onSnapshot(ref,s=>{
+ roomStop=onSnapshot(doc(db,"rooms",code),s=>{
   if(!s.exists()){status("ROOM CLOSED");return;}
   const r=s.data();
   if(r.status==="started"){
    if(r.gameType==="ZOMBIE")beginZombieFriends();
    else beginPvp();
-  }else{
-   status("ROOM "+code+" — "+(r.players||[]).length+" PLAYER(S)");
-  }
+  }else status("ROOM "+code+" — "+(r.players||[]).length+" PLAYER(S)");
  },e=>status("ROOM SYNC ERROR: "+e.message));
 }
 
@@ -372,8 +424,7 @@ async function startMatch(){
    const r=s.data(),players=r.players||[],votes=r.votes||[];
    if(!votes.includes(auth.currentUser.uid))votes.push(auth.currentUser.uid);
    tx.update(ref,{
-    votes,
-    status:players.length>0&&players.every(p=>votes.includes(p))?"started":"open"
+    votes,status:players.length>0&&players.every(p=>votes.includes(p))?"started":"open"
    });
   });
   status("VOTE SENT — WAITING FOR PLAYERS");
@@ -467,13 +518,11 @@ function startBoss(){
  status("BOSS BATTLE — DODGE THE RED BLASTS!");
  if(boss)scene.remove(boss);
  boss=new THREE.Group();boss.position.set(0,1,-7);scene.add(boss);
- const bossMat=new THREE.MeshStandardMaterial({
-  color:0x300710,emissive:0x8b0018,emissiveIntensity:.7
- });
- const body=new THREE.Mesh(new THREE.SphereGeometry(.8,24,20),bossMat);
+ const mat=new THREE.MeshStandardMaterial({color:0x300710,emissive:0x8b0018,emissiveIntensity:.7});
+ const body=new THREE.Mesh(new THREE.SphereGeometry(.8,24,20),mat);
  body.scale.y=1.3;boss.add(body);
- const bossHead=new THREE.Mesh(new THREE.SphereGeometry(.48,20,16),bossMat);
- bossHead.position.y=1.1;boss.add(bossHead);
+ const h=new THREE.Mesh(new THREE.SphereGeometry(.48,20,16),mat);
+ h.position.y=1.1;boss.add(h);
  for(let i=0;i<2;i++){
   const eye=new THREE.Mesh(new THREE.SphereGeometry(.08,12,12),lava);
   eye.position.set(i?.2:-.2,1.15,-.42);boss.add(eye);
@@ -502,18 +551,15 @@ function damageBoss(){
  }
 }
 
-function fireBossProjectile(targetOffset=0){
+function fireBossProjectile(offset=0){
  if(!boss)return;
  const origin=boss.localToWorld(new THREE.Vector3(0,1.1,-.2));
  const target=new THREE.Vector3();camera.getWorldPosition(target);
  const direction=target.sub(origin).normalize();
- if(targetOffset)direction.applyAxisAngle(new THREE.Vector3(0,1,0),targetOffset).normalize();
+ if(offset)direction.applyAxisAngle(new THREE.Vector3(0,1,0),offset).normalize();
  const mesh=new THREE.Mesh(bossProjectileGeometry,bossProjectileMaterial);
  mesh.position.copy(origin);scene.add(mesh);
- bossProjectiles.push({
-  mesh,velocity:direction.multiplyScalar(bossPhase===2?6.6:5.5),
-  damage:bossPhase===2?21:16,life:5
- });
+ bossProjectiles.push({mesh,velocity:direction.multiplyScalar(bossPhase===2?6.6:5.5),damage:bossPhase===2?21:16,life:5});
 }
 
 function updateBossFight(dt){
@@ -530,12 +576,8 @@ function updateBossFight(dt){
    }else fireBossProjectile();
    bossAttackTimer=bossPhase===2?1.25:(bossElapsed<60?1.65:2.05);
   }
- }else{
-  bossAttackTimer-=dt;
-  if(bossAttackTimer<=0){
-   bossWarning=.48;
-   status(bossPhase===2?"BOSS ENRAGED — DODGE NOW!":"BOSS IS CHARGING — MOVE NOW!");
-  }
+ }else if((bossAttackTimer-=dt)<=0){
+  bossWarning=.48;status(bossPhase===2?"BOSS ENRAGED — DODGE NOW!":"BOSS IS CHARGING — MOVE NOW!");
  }
  const player=new THREE.Vector3();camera.getWorldPosition(player);
  for(let i=bossProjectiles.length-1;i>=0;i--){
@@ -546,13 +588,11 @@ function updateBossFight(dt){
    scene.remove(p.mesh);bossProjectiles.splice(i,1);
    status("HIT! HEALTH: "+health+" — KEEP DODGING!");
    if(health<=0){
-    mode="BOSS_LOST";clearBossProjectiles();
-    screenText("YOU WERE DEFEATED");
+    mode="BOSS_LOST";clearBossProjectiles();screenText("YOU WERE DEFEATED");
     status("BOSS WON THIS ROUND — TRY AGAIN OR RETURN TO MENU");
     if(boss){scene.remove(boss);boss=null;}
     addButton("RETRY BOSS",1.0,startBoss);
-    addButton("BACK TO MENU",.65,showMenu);
-    return;
+    addButton("BACK TO MENU",.65,showMenu);return;
    }
   }else if(p.life<=0||p.mesh.position.distanceTo(player)>24){
    scene.remove(p.mesh);bossProjectiles.splice(i,1);
@@ -560,31 +600,36 @@ function updateBossFight(dt){
  }
 }
 
-/* ================= ZOMBIE SURVIVAL MODE ================= */
-
-let zombies=[];
-let zombieArenaObjects=[];
-let zombieLevel=1;
-let zombieKills=0;
-let zombieSpawnTimer=0;
-let zombieDamageTimer=0;
-let zombieGameOver=false;
-let zombieFriends=false;
-let zombieWeapon="PISTOL";
-let zombieWeaponDamage=25;
-let zombieFireDelay=350;
-let zombieLastShot=0;
+/* ZOMBIE SURVIVAL */
+let zombies=[],zombieArenaObjects=[];
+let zombieLevel=1,zombieKills=0,zombieSpawnTimer=0;
+let zombieGameOver=false,zombieFriends=false;
+let zombieWeapon="PISTOL",zombieWeaponDamage=25,zombieFireDelay=350,zombieLastShot=0;
 let zombieRaycaster=new THREE.Raycaster();
 
-function zombieKillsRequired(level){
- return 50*Math.pow(2,level-1);
+let zombieBoss=null,zombieBossHP=0,zombieBossMaxHP=0;
+let zombieBossIndex=1,zombieBossNextLevel=25,zombieBossActive=false;
+let zombieBossAttackTimer=2,zombieBossWarning=0;
+let zombieBossProjectiles=[],zombieBossElapsed=0,zombieBossAttackCount=0;
+
+const zombieBossProjectileGeometry=new THREE.SphereGeometry(.18,12,10);
+const zombieBossProjectileMaterial=new THREE.MeshStandardMaterial({
+ color:0xff1838,emissive:0xff001e,emissiveIntensity:2
+});
+
+/* ARENA AND BASE BOUNDARIES */
+const ARENA={minX:-29,maxX:29,minZ:-84,maxZ:-26};
+const BASE={minX:-7.5,maxX:7.5,minZ:-48,maxZ:-29};
+const BASE_DOOR_WIDTH=3;
+
+function insideBase(x,z,padding=0){
+ return x>BASE.minX-padding&&x<BASE.maxX+padding&&
+  z>BASE.minZ-padding&&z<BASE.maxZ+padding;
 }
-function zombieReward(level){
- return 25+5*(level-1);
-}
-function zombieDamage(level){
- return 25*Math.pow(2,level-1);
-}
+
+function zombieKillsRequired(level){return 50*Math.pow(2,level-1);}
+function zombieReward(level){return 25+5*(level-1);}
+function zombieDamage(level){return 25*Math.pow(2,level-1);}
 
 function zombieDifficulty(level){
  if(level<=1)return {speed:.48,attackDelay:3.5,hp:50,spawnDelay:2.6};
@@ -602,11 +647,15 @@ function updateZombieHUD(){
  updateHUD();
  const info=document.getElementById("zombieInfo");
  if(mode==="ZOMBIE"||mode==="ZOMBIE_FRIENDS"){
-  info.textContent="LEVEL "+zombieLevel+
-   " | KILLS "+zombieKills+"/"+zombieKillsRequired(zombieLevel);
+  if(zombieBossActive){
+   info.textContent="BOSS "+zombieBossIndex+" | BOSS LEVEL "+zombieBossNextLevel+" | HP "+Math.ceil(zombieBossHP)+"/"+zombieBossMaxHP;
+  }else{
+   info.textContent="LEVEL "+zombieLevel+" | KILLS "+zombieKills+"/"+zombieKillsRequired(zombieLevel)+" | NEXT BOSS: LEVEL "+zombieBossNextLevel;
+  }
  }else info.textContent="";
 }
 
+/* BUILD THE ZOMBIE ARENA AND HEADQUARTERS */
 function createZombieArena(){
  for(const o of zombieArenaObjects)scene.remove(o);
  zombieArenaObjects.length=0;
@@ -625,10 +674,8 @@ function createZombieArena(){
 
  const wallMaterial=new THREE.MeshStandardMaterial({color:0x282b33});
  const wallData=[
-  [0,2,-84,58,4,.5],
-  [0,2,-26,58,4,.5],
-  [-29,2,-55,.5,4,58],
-  [29,2,-55,.5,4,58]
+  [0,2,-84,58,4,.5],[0,2,-26,58,4,.5],
+  [-29,2,-55,.5,4,58],[29,2,-55,.5,4,58]
  ];
  for(const [x,y,z,w,h,d] of wallData){
   const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMaterial);
@@ -641,26 +688,180 @@ function createZombieArena(){
 
  const beacon=box(.35,5,.35,0x7d0b20,0,2.5,-55);
  zombieArenaObjects.push(beacon);
+
+ createHeadquarters();
 }
 
+/* BASE: COMPUTER, STORE AND MENUS ARE INSIDE */
+let baseObjects=[];
+let turretObjects=[];
+let shieldMesh=null;
+let turretFireTimer=0;
+
+function createHeadquarters(){
+ for(const o of baseObjects)scene.remove(o);
+ baseObjects.length=0;
+
+ const baseFloor=box(15,.18,19,0x252a34,0,.02,-38.5);
+ baseObjects.push(baseFloor);
+
+ const trimMat=new THREE.MeshStandardMaterial({
+  color:0xff1735,emissive:0x7d0018,emissiveIntensity:1.2
+ });
+ const baseWalls=[
+  box(.35,4,19,0x242832,-7.5,2,-38.5),
+  box(.35,4,19,0x242832,7.5,2,-38.5),
+  box(15,4,.35,0x242832,0,2,-48),
+  box(6,4,.35,0x242832,-4.5,2,-29),
+  box(6,4,.35,0x242832,4.5,2,-29)
+ ];
+ baseObjects.push(...baseWalls);
+
+ const roof=box(15,.25,19,0x171b25,0,4.1,-38.5);
+ baseObjects.push(roof);
+
+ for(const x of [-7.5,7.5]){
+  const strip=box(.12,3.7,.12,0xff1735,x,2,-38.5);
+  baseObjects.push(strip);
+ }
+
+ const sign=box(5,.8,.15,0x10131c,0,3.2,-47.75);
+ baseObjects.push(sign);
+ const signText=new THREE.Mesh(
+  new THREE.PlaneGeometry(4.7,.65),
+  new THREE.MeshBasicMaterial({map:textTexture("REDLINE HQ","#ff263f")})
+ );
+ signText.position.set(0,3.2,-47.65);
+ scene.add(signText);baseObjects.push(signText);
+
+ const doorFrame=box(3.2,.15,.4,0x9d1025,0,3.8,-29);
+ baseObjects.push(doorFrame);
+
+ const baseLight=new THREE.PointLight(0xff1735,18,18);
+ baseLight.position.set(0,3,-38);
+ scene.add(baseLight);baseObjects.push(baseLight);
+
+ /* Keep all computer menus physically inside the headquarters. */
+ computer.position.set(0,0,-45);
+ computer.visible=true;
+
+ createTurrets();
+ createShieldVisual();
+}
+
+function createTurrets(){
+ for(const t of turretObjects)scene.remove(t);
+ turretObjects.length=0;
+
+ const positions=[
+  [-9,0,-49], [9,0,-49], [-9,0,-28], [9,0,-28]
+ ];
+
+ for(let i=0;i<positions.length;i++){
+  const [x,y,z]=positions[i];
+  const turret=new THREE.Group();
+  turret.position.set(x,y,z);
+
+  const base=new THREE.Mesh(
+   new THREE.CylinderGeometry(.55,.7,.35,12),
+   new THREE.MeshStandardMaterial({color:0x292e39,metalness:.5,roughness:.5})
+  );
+  base.position.y=.2;turret.add(base);
+
+  const headMesh=new THREE.Mesh(
+   new THREE.BoxGeometry(.65,.45,.65),
+   new THREE.MeshStandardMaterial({color:0x171b24,metalness:.4})
+  );
+  headMesh.position.y=.55;turret.add(headMesh);
+
+  const barrel=new THREE.Mesh(
+   new THREE.CylinderGeometry(.09,.12,.85,10),
+   new THREE.MeshStandardMaterial({color:0x55101e,emissive:0x8b0018,emissiveIntensity:.5})
+  );
+  barrel.rotation.x=Math.PI/2;
+  barrel.position.set(0,.55,-.55);
+  turret.add(barrel);
+
+  const glow=new THREE.PointLight(0xff102c,1.5,3);
+  glow.position.y=.7;turret.add(glow);
+
+  scene.add(turret);
+  turretObjects.push(turret);
+ }
+}
+
+function createShieldVisual(){
+ if(shieldMesh){scene.remove(shieldMesh);shieldMesh=null;}
+ if(baseShieldLevel<=0)return;
+
+ shieldMesh=new THREE.Mesh(
+  new THREE.BoxGeometry(15.5,4.5,19.5),
+  new THREE.MeshBasicMaterial({
+   color:0x168bff,transparent:true,opacity:.045,
+   wireframe:true
+  })
+ );
+ shieldMesh.position.set(0,2,-38.5);
+ scene.add(shieldMesh);
+ baseObjects.push(shieldMesh);
+}
+
+/* PURCHASE BASE DEFENSES */
+function buyTurretUpgrade(){
+ const price=1500+baseTurretLevel*1500;
+ if(baseTurretLevel>=4){status("TURRETS ARE FULLY UPGRADED");return;}
+ if(money<price){status("NOT ENOUGH MONEY — NEED $"+price);return;}
+ money-=price;baseTurretLevel++;
+ savePlayerProfile();updateHUD();
+ status("BASE TURRET UPGRADED — LEVEL "+baseTurretLevel);
+ showBaseShop();
+}
+
+function buyShieldUpgrade(){
+ const price=2000+baseShieldLevel*2000;
+ if(baseShieldLevel>=3){status("BASE SHIELD IS FULLY UPGRADED");return;}
+ if(money<price){status("NOT ENOUGH MONEY — NEED $"+price);return;}
+ money-=price;baseShieldLevel++;
+ savePlayerProfile();updateHUD();
+ createShieldVisual();
+ status("BASE SHIELD UPGRADED — LEVEL "+baseShieldLevel);
+ showBaseShop();
+}
+
+/* ZOMBIES */
 function clearZombies(){
  for(const z of zombies)scene.remove(z.group);
  zombies.length=0;
 }
 
+function chooseZombieSpawn(){
+ /* Spawn around the outside of the headquarters, never inside it. */
+ for(let tries=0;tries<80;tries++){
+  const side=Math.floor(Math.random()*4);
+  let x,z;
+  if(side===0){x=BASE.minX-2-Math.random()*12;z=BASE.minZ+Math.random()*(BASE.maxZ-BASE.minZ);}
+  if(side===1){x=BASE.maxX+2+Math.random()*12;z=BASE.minZ+Math.random()*(BASE.maxZ-BASE.minZ);}
+  if(side===2){x=BASE.minX+Math.random()*(BASE.maxX-BASE.minX);z=BASE.minZ-2-Math.random()*12;}
+  if(side===3){x=BASE.minX+Math.random()*(BASE.maxX-BASE.minX);z=BASE.maxZ+2+Math.random()*12;}
+
+  x=THREE.MathUtils.clamp(x,ARENA.minX+2,ARENA.maxX-2);
+  z=THREE.MathUtils.clamp(z,ARENA.minZ+2,ARENA.maxZ-2);
+  if(!insideBase(x,z,1))return {x,z};
+ }
+ return {x:BASE.maxX+5,z:-38};
+}
+
 function spawnZombie(){
- if(zombieGameOver||!(mode==="ZOMBIE"||mode==="ZOMBIE_FRIENDS"))return;
+ if(zombieGameOver||zombieBossActive||
+  !(mode==="ZOMBIE"||mode==="ZOMBIE_FRIENDS"))return;
+
  const diff=zombieDifficulty(zombieLevel);
- const angle=Math.random()*Math.PI*2;
- const radius=12+Math.random()*10;
- const x=Math.cos(angle)*radius;
- const z=-55+Math.sin(angle)*radius;
+ const spawn=chooseZombieSpawn();
  const group=new THREE.Group();
- group.position.set(x,0,z);
+ group.position.set(spawn.x,0,spawn.z);
 
  const skin=new THREE.MeshStandardMaterial({
-  color:zombieLevel<=3?0x55794a:0x354c35,
-  roughness:1
+  color:zombieLevel<=3?0x55794a:0x354c35,roughness:1
  });
  const dark=new THREE.MeshStandardMaterial({color:0x172018});
  const eyes=new THREE.MeshStandardMaterial({
@@ -668,85 +869,219 @@ function spawnZombie(){
  });
 
  const body=new THREE.Mesh(new THREE.SphereGeometry(.34,14,12),skin);
- body.position.y=.65;body.scale.set(.8,1.25,.65);
- group.add(body);
+ body.position.y=.65;body.scale.set(.8,1.25,.65);group.add(body);
 
  const headMesh=new THREE.Mesh(new THREE.SphereGeometry(.22,14,12),skin);
  headMesh.position.y=1.15;group.add(headMesh);
 
  for(let i=0;i<2;i++){
   const eye=new THREE.Mesh(new THREE.SphereGeometry(.035,8,8),eyes);
-  eye.position.set(i?.09:-.09,1.17,-.19);
-  group.add(eye);
+  eye.position.set(i?.09:-.09,1.17,-.19);group.add(eye);
  }
 
- const armMat=skin;
  for(let i=0;i<2;i++){
-  const arm=new THREE.Mesh(new THREE.CylinderGeometry(.07,.09,.55,8),armMat);
+  const arm=new THREE.Mesh(new THREE.CylinderGeometry(.07,.09,.55,8),skin);
   arm.position.set(i?.34:-.34,.72,-.02);
-  arm.rotation.z=i?.5:-.5;
-  group.add(arm);
+  arm.rotation.z=i?.5:-.5;group.add(arm);
  }
+
  const legs=[];
  for(let i=0;i<2;i++){
   const leg=new THREE.Mesh(new THREE.CylinderGeometry(.09,.1,.42,8),dark);
   leg.position.set(i?.13:-.13,.2,0);
   group.add(leg);legs.push(leg);
  }
+
  scene.add(group);
  zombies.push({
   group,hp:diff.hp,maxHP:diff.hp,speed:diff.speed,
-  attackDelay:diff.attackDelay,attackTimer:Math.random()*diff.attackDelay,
+  attackDelay:diff.attackDelay,
+  attackTimer:Math.random()*diff.attackDelay,
   legs,phase:Math.random()*6
  });
 }
 
-function startZombieMode(friends=false){
- if(boss){scene.remove(boss);boss=null;}
- clearBossProjectiles();
+/* ZOMBIE BOSS PROGRESSION */
+function startZombieBoss(){
+ if(zombieGameOver||zombieBossActive)return;
+ zombieBossActive=true;
  clearZombies();
+ zombieBossElapsed=0;
+ zombieBossAttackTimer=2;
+ zombieBossWarning=0;
+ zombieBossAttackCount=0;
+
+ zombieBossMaxHP=Math.floor(1500*Math.pow(1.5,zombieBossIndex-1));
+ zombieBossHP=zombieBossMaxHP;
+
+ if(zombieBoss)scene.remove(zombieBoss);
+ zombieBoss=new THREE.Group();
+ zombieBoss.position.set(0,0,-65);
+ scene.add(zombieBoss);
+
+ const mat=new THREE.MeshStandardMaterial({
+  color:0x320611,emissive:0x9c001e,emissiveIntensity:1.1,roughness:.7
+ });
+ const body=new THREE.Mesh(new THREE.SphereGeometry(1.25,24,20),mat);
+ body.position.y=1.45;body.scale.set(1.1,1.35,.85);zombieBoss.add(body);
+
+ const h=new THREE.Mesh(new THREE.SphereGeometry(.7,20,16),mat);
+ h.position.y=3.05;zombieBoss.add(h);
+
+ for(let i=0;i<2;i++){
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(.13,12,10),lava);
+  eye.position.set(i?.3:-.3,3.1,-.61);zombieBoss.add(eye);
+ }
+
+ const core=new THREE.Mesh(new THREE.SphereGeometry(.38,16,12),lava);
+ core.position.set(0,1.5,-.95);zombieBoss.add(core);
+
+ const armMat=new THREE.MeshStandardMaterial({color:0x21040a,emissive:0x4b0010,emissiveIntensity:.7});
+ for(let i=0;i<2;i++){
+  const arm=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,1.65,12),armMat);
+  arm.position.set(i?.95:-.95,1.55,0);
+  arm.rotation.z=i?.25:-.25;zombieBoss.add(arm);
+ }
+
+ const light=new THREE.PointLight(0xff102c,35,15);
+ light.position.set(0,3,-1);zombieBoss.add(light);
+
+ document.getElementById("crosshair").style.display="block";
+ screenText("BOSS LEVEL "+zombieBossNextLevel);
+ status("WARNING! BOSS "+zombieBossIndex+" HAS ARRIVED — LEVEL "+zombieBossNextLevel+"!");
+ updateZombieHUD();
+}
+
+function fireZombieBossProjectile(offset=0){
+ if(!zombieBoss||!zombieBossActive)return;
+ const origin=zombieBoss.localToWorld(new THREE.Vector3(0,2.2,-.5));
+ const target=new THREE.Vector3();camera.getWorldPosition(target);
+ const direction=target.sub(origin).normalize();
+ if(offset)direction.applyAxisAngle(new THREE.Vector3(0,1,0),offset).normalize();
+
+ const mesh=new THREE.Mesh(zombieBossProjectileGeometry,zombieBossProjectileMaterial);
+ mesh.position.copy(origin);scene.add(mesh);
+ zombieBossProjectiles.push({
+  mesh,velocity:direction.multiplyScalar(7+Math.min(zombieBossIndex,10)*.25),
+  damage:Math.min(250,25+zombieBossIndex*10),life:6
+ });
+}
+
+function clearZombieBossProjectiles(){
+ for(const p of zombieBossProjectiles)scene.remove(p.mesh);
+ zombieBossProjectiles.length=0;
+}
+
+function defeatZombieBoss(){
+ if(!zombieBossActive)return;
+ const reward=1000*zombieBossIndex;
+ zombieBossActive=false;
+ if(zombieBoss){scene.remove(zombieBoss);zombieBoss=null;}
+ clearZombieBossProjectiles();
+ earnMoney(reward);
+
+ zombieBossIndex++;
+ zombieBossNextLevel*=2;
+ health=100;updateHUD();
+ screenText("BOSS DEFEATED!");
+ status("BOSS DEFEATED! +$"+reward+" — NEXT BOSS AT LEVEL "+zombieBossNextLevel);
+ document.getElementById("crosshair").style.display="block";
+ zombieSpawnTimer=1;
+ updateZombieHUD();
+}
+
+function updateZombieBoss(dt){
+ if(!zombieBossActive||!zombieBoss)return;
+ zombieBossElapsed+=dt;
+ zombieBoss.rotation.y=Math.sin(zombieBossElapsed*1.2)*.18;
+ zombieBoss.position.y=Math.sin(zombieBossElapsed*2)*.12;
+
+ if(zombieBossWarning>0){
+  zombieBossWarning-=dt;
+  if(zombieBossWarning<=0){
+   zombieBossAttackCount++;
+   if(zombieBossAttackCount%3===0){
+    fireZombieBossProjectile(-.25);
+    fireZombieBossProjectile(0);
+    fireZombieBossProjectile(.25);
+   }else fireZombieBossProjectile();
+   zombieBossAttackTimer=Math.max(.65,2.2-zombieBossIndex*.08);
+  }
+ }else if((zombieBossAttackTimer-=dt)<=0){
+  zombieBossWarning=.65;status("BOSS IS CHARGING AN ATTACK — DODGE!");
+ }
+
+ const player=new THREE.Vector3();camera.getWorldPosition(player);
+ for(let i=zombieBossProjectiles.length-1;i>=0;i--){
+  const p=zombieBossProjectiles[i];
+  p.mesh.position.addScaledVector(p.velocity,dt);p.life-=dt;
+  if(p.mesh.position.distanceTo(player)<.55){
+   let damage=p.damage;
+   if(insideBase(player.x,player.z)&&baseShieldLevel>0)damage=Math.ceil(damage/(1+baseShieldLevel));
+   health=Math.max(0,health-damage);updateHUD();
+   scene.remove(p.mesh);zombieBossProjectiles.splice(i,1);
+   status("BOSS BLAST HIT YOU FOR "+damage+" DAMAGE! HEALTH: "+health);
+   if(health<=0){endZombieGame();return;}
+  }else if(p.life<=0||p.mesh.position.distanceTo(player)>40){
+   scene.remove(p.mesh);zombieBossProjectiles.splice(i,1);
+  }
+ }
+}
+
+/* ZOMBIE HEADQUARTERS MENU — ALWAYS AVAILABLE */
+function showZombieHQMenu(){
+ computer.position.set(0,0,-45);
+ computer.visible=true;
+ clearButtons();
+ screenText("REDLINE HEADQUARTERS");
+
+ addButton("WEAPON SHOP",1.45,showZombieShop);
+ addButton("BASE DEFENSES",1.05,showBaseShop);
+ addButton("BACK TO MENU",.65,showMenu);
+
+ document.getElementById("crosshair").style.display="block";
+}
+
+/* START ZOMBIE MODE — AUTOMATIC SURVIVAL */
+function startZombieMode(friends=false){
+ document.getElementById("crosshair").style.display="block";
+ if(boss){scene.remove(boss);boss=null;}
+ clearBossProjectiles();clearZombies();
+ if(zombieBoss){scene.remove(zombieBoss);zombieBoss=null;}
+ clearZombieBossProjectiles();
 
  zombieFriends=friends;
  zombieGameOver=false;
- zombieLevel=1;
- zombieKills=0;
- zombieSpawnTimer=0;
- zombieDamageTimer=0;
- zombieWeapon="PISTOL";
- zombieWeaponDamage=25;
- zombieFireDelay=350;
+ zombieLevel=1;zombieKills=0;zombieSpawnTimer=0;
+ zombieWeapon=equippedWeapon;
+ const startingWeapon=weaponList.find(w=>w.name===zombieWeapon)||weaponList[0];
+ zombieWeaponDamage=startingWeapon.damage;
+ zombieFireDelay=startingWeapon.delay;
  zombieLastShot=0;
 
- health=100;
- updateHUD();
+ zombieBossIndex=1;zombieBossNextLevel=25;
+ zombieBossActive=false;zombieBossHP=0;zombieBossMaxHP=0;
+ zombieBossElapsed=0;zombieBossAttackTimer=2;
+ zombieBossWarning=0;zombieBossAttackCount=0;
 
+ health=100;updateHUD();
  mode=friends?"ZOMBIE_FRIENDS":"ZOMBIE";
  createZombieArena();
 
- rig.position.set(0,0,-37);
+ /* Player begins safely inside the headquarters. */
+ rig.position.set(0,0,-38);
  rig.rotation.set(0,0,0);
  yaw=0;pitch=0;
 
- computer.position.set(0,0,-40);
+ computer.position.set(0,0,-45);
  computer.visible=true;
- clearButtons();
- screenText("ZOMBIE SURVIVAL");
 
- addButton("START SURVIVING",1.45,()=>{
-  clearButtons();
-  screenText("SURVIVE!");
-  status("ZOMBIES INCOMING — SURVIVE!");
- });
- addButton("WEAPON SHOP",1.05,showZombieShop);
- addButton("BACK TO MENU",.65,showMenu);
+ /* Survival starts immediately. There is no start button. */
+ showZombieHQMenu();
 
- for(let i=0;i<5;i++)spawnZombie();
+ if(friends)status("ZOMBIE ROOM "+roomCode+" — SURVIVAL STARTED");
+ else status("SOLO ZOMBIE MODE — SURVIVAL STARTED — HEADQUARTERS SECURE");
 
- if(friends){
-  status("ZOMBIE ROOM "+roomCode+" — ZOMBIE SIMULATION IS LOCAL");
- }else{
-  status("SOLO ZOMBIE MODE — SURVIVE!");
- }
  updateZombieHUD();
 }
 
@@ -755,58 +1090,116 @@ function beginZombieFriends(){
  startZombieMode(true);
 }
 
+/* WEAPON SHOP — SEQUENTIAL UNLOCKS */
+function equipWeapon(name){
+ const weapon=weaponList.find(w=>w.name===name);
+ if(!weapon||!unlockedWeapons.includes(name))return;
+ equippedWeapon=name;
+ zombieWeapon=name;
+ zombieWeaponDamage=weapon.damage;
+ zombieFireDelay=weapon.delay;
+ savePlayerProfile();
+ status(name+" EQUIPPED");
+ showZombieShop();
+}
+
+function buyWeapon(name){
+ const index=weaponList.findIndex(w=>w.name===name);
+ if(index<0)return;
+ if(unlockedWeapons.includes(name)){
+  equipWeapon(name);return;
+ }
+
+ const previous=weaponList[index-1];
+ if(index>0&&!unlockedWeapons.includes(previous.name)){
+  status("BUY "+previous.name+" FIRST — WEAPONS MUST BE UNLOCKED IN ORDER");
+  return;
+ }
+
+ const weapon=weaponList[index];
+ if(money<weapon.price){
+  status("NOT ENOUGH MONEY — NEED $"+weapon.price.toLocaleString());
+  return;
+ }
+
+ money-=weapon.price;
+ unlockedWeapons.push(name);
+ equippedWeapon=name;
+ zombieWeapon=name;
+ zombieWeaponDamage=weapon.damage;
+ zombieFireDelay=weapon.delay;
+ savePlayerProfile();updateHUD();
+ status(name+" PURCHASED AND EQUIPPED!");
+ showZombieShop();
+}
+
 function showZombieShop(){
- if(mode!=="ZOMBIE"&&mode!=="ZOMBIE_FRIENDS")return;
- clearButtons();
- screenText("WEAPON SHOP");
- addButton("PISTOL — FREE",1.55,()=>{
-  zombieWeapon="PISTOL";zombieWeaponDamage=25;zombieFireDelay=350;
-  status("PISTOL EQUIPPED");showZombieShop();
- });
- addButton("SHOTGUN — $500",1.15,()=>{
-  if(money<500){status("NOT ENOUGH MONEY — NEED $500");return;}
-  money-=500;localStorage.setItem("redlineMoney",money);
-  zombieWeapon="SHOTGUN";zombieWeaponDamage=90;zombieFireDelay=750;
-  updateHUD();status("SHOTGUN PURCHASED!");showZombieShop();
- });
- addButton("RAPID BLASTER — $1,000",.75,()=>{
-  if(money<1000){status("NOT ENOUGH MONEY — NEED $1,000");return;}
-  money-=1000;localStorage.setItem("redlineMoney",money);
-  zombieWeapon="RAPID BLASTER";zombieWeaponDamage=40;zombieFireDelay=130;
-  updateHUD();status("RAPID BLASTER PURCHASED!");showZombieShop();
- });
- addButton("BACK TO SURVIVAL",.35,()=>{
-  clearButtons();screenText("SURVIVE!");
-  status("KEEP FIGHTING!"); 
+ if(!["ZOMBIE","ZOMBIE_FRIENDS","ZOMBIE_LOST"].includes(mode))return;
+ document.getElementById("crosshair").style.display="none";
+ clearButtons();screenText("WEAPON SHOP");
+
+ const rows=[
+  ["PISTOL",1.65],["SHOTGUN",1.35],["RAPID BLASTER",1.05],
+  ["ASSAULT RIFLE",.75],["SNIPER RIFLE",.45],["MINIGUN",.15]
+ ];
+
+ for(const [name,y] of rows){
+  const w=weaponList.find(v=>v.name===name);
+  const owned=unlockedWeapons.includes(name);
+  const label=owned?
+   (equippedWeapon===name?name+" — EQUIPPED":name+" — EQUIP"):
+   name+" — $"+w.price.toLocaleString();
+  addButton(label,y,()=>buyWeapon(name));
+ }
+
+ addButton("BASE DEFENSES",-.2,showBaseShop);
+ addButton("BACK TO SURVIVAL",-.55,()=>{
+  showZombieHQMenu();
+  status("KEEP FIGHTING!");
  });
  updateHUD();
 }
 
+/* BASE DEFENSE STORE */
+function showBaseShop(){
+ if(!["ZOMBIE","ZOMBIE_FRIENDS","ZOMBIE_LOST"].includes(mode))return;
+ document.getElementById("crosshair").style.display="none";
+ clearButtons();screenText("BASE DEFENSES");
+
+ const turretPrice=1500+baseTurretLevel*1500;
+ const shieldPrice=2000+baseShieldLevel*2000;
+
+ addButton("TURRET UPGRADE — $"+turretPrice.toLocaleString(),1.5,buyTurretUpgrade);
+ addButton("SHIELD UPGRADE — $"+shieldPrice.toLocaleString(),1.1,buyShieldUpgrade);
+ addButton("TURRETS: LEVEL "+baseTurretLevel,.7,()=>{
+  status("TURRET LEVEL "+baseTurretLevel+" — MAX LEVEL 4");
+ });
+ addButton("SHIELD: LEVEL "+baseShieldLevel,.3,()=>{
+  status("SHIELD LEVEL "+baseShieldLevel+" — MAX LEVEL 3");
+ });
+ addButton("WEAPON SHOP",-.1,showZombieShop);
+ addButton("BACK TO SURVIVAL",-.5,()=>{
+  showZombieHQMenu();
+  status("HEADQUARTERS DEFENSES READY");
+ });
+}
+
+/* LEVELS AND KILLS */
 function zombieLevelUp(){
- zombieLevel++;
- zombieKills=0;
- health=100;
- updateZombieHUD();
+ zombieLevel++;zombieKills=0;health=100;updateZombieHUD();
+ if(zombieLevel>=zombieBossNextLevel){startZombieBoss();return;}
  status("LEVEL "+zombieLevel+"! ZOMBIES ARE GETTING STRONGER!");
  screenText("LEVEL "+zombieLevel);
 }
 
 function killZombie(index){
- const z=zombies[index];
- if(!z)return;
- scene.remove(z.group);
- zombies.splice(index,1);
-
+ const z=zombies[index];if(!z)return;
+ scene.remove(z.group);zombies.splice(index,1);
  const reward=zombieReward(zombieLevel);
- earnMoney(reward);
- zombieKills++;
-
- status("ZOMBIE KILLED! +$"+reward+
-  " | LEVEL "+zombieLevel+" — "+zombieKills+"/"+zombieKillsRequired(zombieLevel));
-
- if(zombieKills>=zombieKillsRequired(zombieLevel)){
-  zombieLevelUp();
- }else updateZombieHUD();
+ earnMoney(reward);zombieKills++;
+ status("ZOMBIE KILLED! +$"+reward+" | LEVEL "+zombieLevel+" — "+zombieKills+"/"+zombieKillsRequired(zombieLevel));
+ if(zombieKills>=zombieKillsRequired(zombieLevel))zombieLevelUp();
+ else updateZombieHUD();
 }
 
 function shootZombie(){
@@ -814,47 +1207,85 @@ function shootZombie(){
  const now=performance.now();
  if(now-zombieLastShot<zombieFireDelay)return;
  zombieLastShot=now;
-
  camera.updateMatrixWorld(true);
  zombieRaycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+
+ if(zombieBossActive&&zombieBoss){
+  const hits=zombieRaycaster.intersectObjects(zombieBoss.children,false);
+  if(hits.length){
+   zombieBossHP=Math.max(0,zombieBossHP-zombieWeaponDamage);
+   if(zombieBossHP<=0)defeatZombieBoss();
+   else{
+    status("BOSS HIT! "+Math.ceil(zombieBossHP)+" / "+zombieBossMaxHP+" HP");
+    updateZombieHUD();
+   }
+   return;
+  }
+ }
+
  const targets=[];
- for(const z of zombies){
-  for(const child of z.group.children)targets.push(child);
- }
+ for(const z of zombies)for(const child of z.group.children)targets.push(child);
  const hits=zombieRaycaster.intersectObjects(targets,false);
- if(!hits.length){
-  status(zombieWeapon+" FIRED — NO ZOMBIE HIT");
-  return;
- }
+ if(!hits.length){status(zombieWeapon+" FIRED — NO TARGET HIT");return;}
 
- let target=hits[0].object;
- let zombieIndex=zombies.findIndex(z=>z.group.children.includes(target));
- if(zombieIndex<0)return;
-
- zombies[zombieIndex].hp-=zombieWeaponDamage;
- if(zombies[zombieIndex].hp<=0){
-  killZombie(zombieIndex);
- }else{
-  status("ZOMBIE HIT! "+Math.ceil(zombies[zombieIndex].hp)+" HP LEFT");
- }
+ const target=hits[0].object;
+ const index=zombies.findIndex(z=>z.group.children.includes(target));
+ if(index<0)return;
+ zombies[index].hp-=zombieWeaponDamage;
+ if(zombies[index].hp<=0)killZombie(index);
+ else status("ZOMBIE HIT! "+Math.ceil(zombies[index].hp)+" HP LEFT");
 }
 
 function endZombieGame(){
  if(zombieGameOver)return;
- zombieGameOver=true;
- mode="ZOMBIE_LOST";
- clearZombies();
- clearButtons();
- screenText("YOU WERE DEFEATED");
+ document.getElementById("crosshair").style.display="none";
+ zombieGameOver=true;zombieBossActive=false;
+ clearZombies();clearZombieBossProjectiles();
+ if(zombieBoss){scene.remove(zombieBoss);zombieBoss=null;}
+ clearButtons();screenText("YOU WERE DEFEATED");
  status("YOU WERE DEFEATED ON LEVEL "+zombieLevel);
  addButton("TRY AGAIN",1.0,()=>startZombieMode(zombieFriends));
  addButton("WEAPON SHOP",.65,showZombieShop);
  addButton("BACK TO MENU",.3,showMenu);
 }
 
+/* AUTOMATIC BASE TURRETS */
+function updateTurrets(dt){
+ if(mode!=="ZOMBIE"&&mode!=="ZOMBIE_FRIENDS")return;
+ if(zombieGameOver||baseTurretLevel<=0)return;
+
+ turretFireTimer-=dt;
+ if(turretFireTimer>0)return;
+ turretFireTimer=Math.max(.18,.9-baseTurretLevel*.15);
+
+ for(const turret of turretObjects){
+  if(!turret.visible)continue;
+  let target=null,best=Infinity;
+  for(const z of zombies){
+   const d=turret.position.distanceTo(z.group.position);
+   if(d<best&&d<22){best=d;target=z;}
+  }
+  if(!target)continue;
+
+  const direction=new THREE.Vector3().subVectors(target.group.position,turret.position);
+  direction.y=0;
+  turret.rotation.y=Math.atan2(direction.x,direction.z);
+
+  /* Turrets automatically damage the closest zombie. */
+  target.hp-=12*baseTurretLevel;
+  if(target.hp<=0){
+   const index=zombies.indexOf(target);
+   if(index>=0)killZombie(index);
+  }
+ }
+}
+
+/* ZOMBIE MOVEMENT AND BASE COLLISION */
 function updateZombies(dt){
  if(mode!=="ZOMBIE"&&mode!=="ZOMBIE_FRIENDS")return;
  if(zombieGameOver)return;
+
+ if(zombieBossActive){updateZombieBoss(dt);return;}
 
  zombieSpawnTimer-=dt;
  const maxAlive=Math.min(8+zombieLevel*2,24);
@@ -867,16 +1298,33 @@ function updateZombies(dt){
  camera.getWorldPosition(player);
 
  for(let i=zombies.length-1;i>=0;i--){
-  const z=zombies[i];
-  const group=z.group;
-  const dx=player.x-group.position.x;
-  const dz=player.z-group.position.z;
+  const z=zombies[i],group=z.group;
+  const dx=player.x-group.position.x,dz=player.z-group.position.z;
   const distance=Math.hypot(dx,dz);
 
-  if(distance>0.001){
+  if(distance>.001){
    const direction=new THREE.Vector3(dx,0,dz).normalize();
-   group.position.x+=direction.x*z.speed*dt;
-   group.position.z+=direction.z*z.speed*dt;
+   let nextX=group.position.x+direction.x*z.speed*dt;
+   let nextZ=group.position.z+direction.z*z.speed*dt;
+
+   /* The headquarters perimeter is impassable to zombies. */
+   if(insideBase(nextX,nextZ)){
+    const oldInside=insideBase(group.position.x,group.position.z);
+    if(!oldInside){
+     const cx=THREE.MathUtils.clamp(nextX,BASE.minX-.65,BASE.maxX+.65);
+     const cz=THREE.MathUtils.clamp(nextZ,BASE.minZ-.65,BASE.maxZ+.65);
+     const dxEdge=Math.abs(nextX-cx),dzEdge=Math.abs(nextZ-cz);
+     if(dxEdge<dzEdge)nextX=group.position.x;
+     else nextZ=group.position.z;
+    }
+   }
+
+   /* Extra safety: zombies are never allowed inside the safe-zone volume. */
+   if(!insideBase(nextX,nextZ,.05)){
+    group.position.x=THREE.MathUtils.clamp(nextX,ARENA.minX+1,ARENA.maxX-1);
+    group.position.z=THREE.MathUtils.clamp(nextZ,ARENA.minZ+1,ARENA.maxZ-1);
+   }
+
    group.rotation.y=Math.atan2(direction.x,direction.z);
   }
 
@@ -885,11 +1333,19 @@ function updateZombies(dt){
 
   z.attackTimer-=dt;
   if(distance<1.25&&z.attackTimer<=0){
-   const damage=zombieDamage(zombieLevel);
-   health=Math.max(0,health-damage);
+   let damage=zombieDamage(zombieLevel);
+   if(insideBase(player.x,player.z)){
+    /* The base shield reduces damage while the player is inside HQ. */
+    if(baseShieldLevel>0)damage=Math.ceil(damage/(1+baseShieldLevel));
+    else damage=0;
+   }
+   if(damage>0){
+    health=Math.max(0,health-damage);updateHUD();
+    status("ZOMBIE HIT YOU FOR "+damage+" DAMAGE! HEALTH: "+health);
+   }else{
+    status("HEADQUARTERS SHIELD BLOCKED THE ATTACK!");
+   }
    z.attackTimer=z.attackDelay;
-   updateHUD();
-   status("ZOMBIE HIT YOU FOR "+damage+" DAMAGE! HEALTH: "+health);
    if(health<=0){endZombieGame();return;}
   }
  }
@@ -902,7 +1358,6 @@ function shoot(){
  if(mode!=="PVP")return;
  status("PVP SHOT FIRED");
 }
-
 document.getElementById("fire").addEventListener("pointerdown",e=>{
  e.preventDefault();shoot();
 });
@@ -922,8 +1377,7 @@ document.getElementById("enterVR").onclick=async()=>{
   });
   renderer.xr.setReferenceSpaceType("local-floor");
   await renderer.xr.setSession(session);
-  computer.visible=true;
-  showMenu();
+  computer.visible=true;showMenu();
   document.getElementById("enter").style.display="none";
   document.getElementById("enterVR").style.display="none";
   document.getElementById("hud").style.display="block";
@@ -944,12 +1398,10 @@ if(navigator.xr){
 
 /* MOBILE GAME */
 let mobile=false,yaw=0,pitch=0;
-
 document.getElementById("enter").onclick=()=>{
  mobile=true;
  rig.position.set(0,0,-4.4);
- computer.visible=true;
- showMenu();
+ computer.visible=true;showMenu();
  document.getElementById("enter").style.display="none";
  document.getElementById("enterVR").style.display="none";
  document.getElementById("controls").style.display="block";
@@ -999,7 +1451,10 @@ function moveStick(e){
  sx=x/max;sy=y/max;
  knob.style.transform=`translate(${x}px,${y}px)`;
 }
-stick.onpointerdown=e=>{pointer=e.pointerId;stick.setPointerCapture(pointer);moveStick(e);};
+
+stick.onpointerdown=e=>{
+ pointer=e.pointerId;stick.setPointerCapture(pointer);moveStick(e);
+};
 stick.onpointermove=e=>{if(e.pointerId===pointer)moveStick(e);};
 function resetStick(){sx=0;sy=0;pointer=null;knob.style.transform="translate(0,0)";}
 stick.onpointerup=resetStick;
@@ -1011,7 +1466,6 @@ document.getElementById("jump").onpointerup=()=>jump=false;
 document.getElementById("jump").onpointercancel=()=>jump=false;
 
 let lookId=null,lx=0,ly=0;
-
 renderer.domElement.addEventListener("pointerdown",e=>{
  if(!mobile||!computer.visible)return;
  if(selectComputerButton(e.clientX,e.clientY)){
@@ -1042,24 +1496,20 @@ let previousSync=0;
 function updatePlayer(dt){
  if(!mobile&&!renderer.xr.isPresenting)return;
  const forward=new THREE.Vector3();
- camera.getWorldDirection(forward);
- forward.y=0;forward.normalize();
- const right=new THREE.Vector3().crossVectors(
-  forward,new THREE.Vector3(0,1,0)
- ).normalize();
+ camera.getWorldDirection(forward);forward.y=0;forward.normalize();
+ const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
 
  rig.position.addScaledVector(forward,-sy*2.8*dt);
  rig.position.addScaledVector(right,sx*2.8*dt);
 
  if(jump&&grounded){vy=4.2;grounded=false;}
- vy-=9.8*dt;
- rig.position.y+=vy*dt;
+ vy-=9.8*dt;rig.position.y+=vy*dt;
  if(rig.position.y<=0){rig.position.y=0;vy=0;grounded=true;}
 
- /* Keep the player inside the zombie arena. */
  if(mode==="ZOMBIE"||mode==="ZOMBIE_FRIENDS"){
   rig.position.x=THREE.MathUtils.clamp(rig.position.x,-27,27);
   rig.position.z=THREE.MathUtils.clamp(rig.position.z,-82,-28);
+  /* Player can enter and leave HQ through the front opening. */
  }
 
  camera.getWorldPosition(head.position);
@@ -1067,12 +1517,8 @@ function updatePlayer(dt){
 
  for(let i=0;i<2;i++){
   const side=i===0?-1:1;
-  const shoulder=new THREE.Vector3(
-   head.position.x+side*.2,head.position.y-.35,head.position.z
-  );
-  const hand=new THREE.Vector3(
-   head.position.x+side*.5,head.position.y-.7,head.position.z-.3
-  );
+  const shoulder=new THREE.Vector3(head.position.x+side*.2,head.position.y-.35,head.position.z);
+  const hand=new THREE.Vector3(head.position.x+side*.5,head.position.y-.7,head.position.z-.3);
   segment(arms[i].arm,shoulder,hand);
   arms[i].hand.position.copy(hand);
   arms[i].band.position.copy(shoulder).lerp(hand,.7);
@@ -1101,8 +1547,16 @@ async function syncPosition(){
 function stopZombieMode(){
  clearZombies();
  zombieGameOver=true;
+ zombieBossActive=false;
+ if(zombieBoss){scene.remove(zombieBoss);zombieBoss=null;}
+ clearZombieBossProjectiles();
  for(const o of zombieArenaObjects)scene.remove(o);
  zombieArenaObjects.length=0;
+ for(const o of baseObjects)scene.remove(o);
+ baseObjects.length=0;
+ for(const t of turretObjects)scene.remove(t);
+ turretObjects.length=0;
+ shieldMesh=null;
  if(mode==="ZOMBIE"||mode==="ZOMBIE_FRIENDS"||mode==="ZOMBIE_LOST"){
   computer.position.set(0,0,-7);
  }
@@ -1117,6 +1571,7 @@ renderer.setAnimationLoop(()=>{
  }
  if(boss)updateBossFight(dt);
  updateZombies(dt);
+ updateTurrets(dt);
  renderer.render(scene,camera);
 });
 
@@ -1125,6 +1580,17 @@ window.addEventListener("resize",()=>{
  camera.aspect=innerWidth/innerHeight;
  camera.updateProjectionMatrix();
  renderer.setSize(innerWidth,innerHeight);
+});
+
+/* INITIAL PROFILE LOAD */
+authReady.then(()=>{
+ if(ready){
+  updateHUD();
+  if(mode==="MENU"&&balancePanel){
+   /* Refresh the menu balance display after cloud profile loads. */
+   showMenu();
+  }
+ }
 });
 </script>
 </body>
