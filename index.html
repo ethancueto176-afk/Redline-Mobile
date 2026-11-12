@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -59,9 +60,9 @@ import {
  getAuth,signInAnonymously,setPersistence,browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
 
-/* FIREBASE */
+/* FIREBASE CONFIGURATION */
 const firebaseConfig={
- apiKey:"AIzaSyCv7B7N_X2kLYhwn8xwHI5It4TS7dMjKQk",
+   apiKey: "AIzaSyCvB7N_XK2kLYhwn8xwHI5It4TS7dMjKQk",
  authDomain:"redline-arena.firebaseapp.com",
  projectId:"redline-arena",
  storageBucket:"redline-arena.firebasestorage.app",
@@ -69,37 +70,53 @@ const firebaseConfig={
  appId:"1:94653220727:web:ec7d1fe122a000bb1b4372",
  measurementId:"G-CXG70DQ206"
 };
+
 const app=initializeApp(firebaseConfig);
 const db=getFirestore(app);
 const auth=getAuth(app);
+
 let ready=false;
 const authReady=setPersistence(auth,browserLocalPersistence)
  .then(()=>signInAnonymously(auth))
- .then(()=>{ready=true;status("PLAYER RECOGNIZED");})
- .catch(e=>status("FIREBASE ERROR: "+e.message));
+ .then(()=>{
+  ready=true;
+  status("PLAYER RECOGNIZED");
+ })
+ .catch(e=>{
+  status("FIREBASE ERROR: "+e.message);
+  console.error("Firebase authentication:",e);
+ });
 
 /* PLAYER ACCOUNT */
 let money=Number(localStorage.getItem("redlineMoney")||0);
 let health=100;
+
 function updateHUD(){
- document.getElementById("money").textContent="MONEY: $"+money.toLocaleString();
- document.getElementById("health").textContent="HEALTH: "+health;
+ document.getElementById("money").textContent=
+  "MONEY: $"+money.toLocaleString();
+ document.getElementById("health").textContent=
+  "HEALTH: "+health;
 }
+
 function earnMoney(amount){
  money+=amount;
  localStorage.setItem("redlineMoney",money);
  updateHUD();
 }
-function status(s){document.getElementById("status").textContent=s;}
+
+function status(s){
+ document.getElementById("status").textContent=s;
+}
 updateHUD();
 
-/* THREE.JS */
+/* THREE.JS WORLD */
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x090b12);
 scene.fog=new THREE.Fog(0x090b12,18,45);
 
 const rig=new THREE.Group();
 scene.add(rig);
+
 const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,100);
 camera.position.set(0,1.6,2);
 rig.add(camera);
@@ -113,6 +130,7 @@ renderer.domElement.style.touchAction="none";
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x333344,2));
+
 const redLight=new THREE.PointLight(0xff1735,35,25);
 redLight.position.set(0,4,-3);
 scene.add(redLight);
@@ -124,51 +142,62 @@ const floor=new THREE.Mesh(
 floor.rotation.x=-Math.PI/2;
 floor.position.z=-2;
 scene.add(floor);
+
 const grid=new THREE.GridHelper(18,36,0xff1735,0x444455);
 grid.position.set(0,.02,-2);
 scene.add(grid);
 
 function box(w,h,d,color,x,y,z,parent=scene){
- const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
- new THREE.MeshStandardMaterial({color,roughness:.8}));
+ const m=new THREE.Mesh(
+  new THREE.BoxGeometry(w,h,d),
+  new THREE.MeshStandardMaterial({color,roughness:.8})
+ );
  m.position.set(x,y,z);
  m.castShadow=true;
  m.receiveShadow=true;
  parent.add(m);
  return m;
 }
+
 function wall(x,y,z,w,h,d){
  box(w,h,d,0x252832,x,y,z);
 }
+
 wall(0,2,-11,18,4,.3);
 wall(-9,2,-2,.3,4,18);
 wall(9,2,-2,.3,4,18);
 wall(0,4,-2,18,.3,18);
 
-/* COMPUTER — NO TABLE */
+/* COMPUTER MENU — NO TABLE */
 const computer=new THREE.Group();
 computer.position.set(0,0,-7);
 scene.add(computer);
 
-/* Monitor and stand only. The old tabletop has been removed. */
 box(2,1.55,.12,0x111827,0,2.05,-.25,computer);
 box(.25,.9,.25,0x17191f,0,1.05,0,computer);
 
 function textTexture(message,color="#ffffff"){
  const c=document.createElement("canvas");
- c.width=1024;c.height=256;
+ c.width=1024;
+ c.height=256;
  const x=c.getContext("2d");
- x.fillStyle="#10131c";x.fillRect(0,0,1024,256);
- x.fillStyle=color;x.font="bold 65px Arial";
- x.textAlign="center";x.textBaseline="middle";
+ x.fillStyle="#10131c";
+ x.fillRect(0,0,1024,256);
+ x.fillStyle=color;
+ x.font="bold 65px Arial";
+ x.textAlign="center";
+ x.textBaseline="middle";
  x.fillText(message,512,128);
  const t=new THREE.CanvasTexture(c);
  t.colorSpace=THREE.SRGBColorSpace;
  return t;
 }
+
 const screen=new THREE.Mesh(
  new THREE.PlaneGeometry(1.85,1.4),
- new THREE.MeshBasicMaterial({map:textTexture("REDLINE ARENA","#ff263f")})
+ new THREE.MeshBasicMaterial({
+  map:textTexture("REDLINE ARENA","#ff263f")
+ })
 );
 screen.position.set(0,2.05,-.18);
 computer.add(screen);
@@ -180,13 +209,22 @@ function screenText(s){
 }
 
 const buttons=[];
+let balancePanel=null;
+
 function clearButtons(){
  for(const b of buttons)computer.remove(b);
  buttons.length=0;
+
+ if(balancePanel){
+  computer.remove(balancePanel);
+  balancePanel=null;
+ }
 }
+
 function addButton(label,y,action){
  const b=box(1.65,.27,.09,0x9d1025,0,y,-.08,computer);
  b.userData.action=action;
+
  const labelMesh=new THREE.Mesh(
   new THREE.PlaneGeometry(1.5,.22),
   new THREE.MeshBasicMaterial({map:textTexture(label)})
@@ -195,295 +233,689 @@ function addButton(label,y,action){
  b.add(labelMesh);
  buttons.push(b);
 }
+
 let mode="MENU";
 let roomCode="";
 let roomStop=null;
 let syncStop=null;
-let lastSync=0;
 let remotePlayers={};
 
 function showMenu(){
  if(roomStop){roomStop();roomStop=null;}
  if(syncStop){syncStop();syncStop=null;}
+
  roomCode="";
  remotePlayers={};
  mode="MENU";
  clearButtons();
  screenText("CHOOSE YOUR GAME");
 
- const balance=box(.9,.22,.06,0x292b33,.7,2.85,-.1,computer);
+ balancePanel=box(.9,.22,.06,0x292b33,.7,2.85,-.1,computer);
+
  const balanceText=new THREE.Mesh(
   new THREE.PlaneGeometry(.85,.18),
-  new THREE.MeshBasicMaterial({map:textTexture("$"+money,"#ffd84a")})
+  new THREE.MeshBasicMaterial({
+   map:textTexture("$"+money,"#ffd84a")
+  })
  );
  balanceText.position.z=.04;
- balance.add(balanceText);
+ balancePanel.add(balanceText);
 
  addButton("BOSS BATTLE",1.7,startBoss);
- addButton("PLAYER VS PLAYER",1.35,()=>showPvpMenu());
+ addButton("PLAYER VS PLAYER",1.35,showPvpMenu);
+
  addButton("PRACTICE MODE",1.0,()=>{
-  mode="PRACTICE";screenText("PRACTICE MODE");status("PRACTICE MODE");
+  mode="PRACTICE";
+  screenText("PRACTICE MODE");
+  status("PRACTICE MODE");
  });
+
  addButton("PUBLIC SERVER",.65,joinPublic);
  addButton("PRIVATE ROOMS",.3,showPrivate);
 }
+
 function showPrivate(){
- clearButtons();screenText("PRIVATE ROOMS");
+ clearButtons();
+ screenText("PRIVATE ROOMS");
  addButton("CREATE ROOM",1.7,()=>createRoom("private","PVP"));
  addButton("JOIN WITH CODE",1.35,joinPrivate);
  addButton("BACK",1.0,showMenu);
 }
+
 function showPvpMenu(){
- clearButtons();screenText("PLAYER VS PLAYER");
+ clearButtons();
+ screenText("PLAYER VS PLAYER");
  addButton("FIND PVP MATCH",1.7,joinPublic);
  addButton("CREATE PRIVATE PVP",1.35,()=>createRoom("private","PVP"));
  addButton("BACK",1.0,showMenu);
 }
 
-/* FIREBASE ROOMS */
-function newCode(){return String(Math.floor(1000+Math.random()*9000));}
+/* FIREBASE MULTIPLAYER ROOMS */
+function newCode(){
+ return String(Math.floor(1000+Math.random()*9000));
+}
+
 async function createRoom(visibility,gameType="PVP"){
  try{
   await authReady;
+  if(!auth.currentUser)throw Error("PLAYER NOT SIGNED IN");
+
   status("CREATING ROOM...");
+
   for(let i=0;i<12;i++){
-   const code=newCode(),ref=doc(db,"rooms",code);
+   const code=newCode();
+   const ref=doc(db,"rooms",code);
+
    if((await getDoc(ref)).exists())continue;
+
    await setDoc(ref,{
-    code,hostUid:auth.currentUser.uid,
-    players:[auth.currentUser.uid],votes:[],
-    visibility,status:"open",gameType,
-    positions:{},createdAt:serverTimestamp()
+    code,
+    hostUid:auth.currentUser.uid,
+    players:[auth.currentUser.uid],
+    votes:[],
+    visibility,
+    status:"open",
+    gameType,
+    positions:{},
+    createdAt:serverTimestamp()
    });
+
    roomCode=code;
    openRoom(code);
    return;
   }
+
   status("COULD NOT CREATE ROOM");
- }catch(e){status("ROOM ERROR: "+e.message);}
+ }catch(e){
+  status("ROOM ERROR: "+e.message);
+ }
 }
+
 async function joinRoom(code){
  await authReady;
+ if(!auth.currentUser)throw Error("PLAYER NOT SIGNED IN");
+
  const ref=doc(db,"rooms",code);
+
  await runTransaction(db,async tx=>{
   const snap=await tx.get(ref);
   if(!snap.exists())throw Error("ROOM NOT FOUND");
+
   const r=snap.data();
   if(r.status!=="open")throw Error("ROOM ALREADY STARTED");
+
   const players=Array.isArray(r.players)?r.players:[];
-  if(!players.includes(auth.currentUser.uid))players.push(auth.currentUser.uid);
+
+  if(!players.includes(auth.currentUser.uid)){
+   players.push(auth.currentUser.uid);
+  }
+
   if(players.length>10)throw Error("ROOM IS FULL");
+
   tx.update(ref,{players});
  });
+
  roomCode=code;
  openRoom(code);
 }
+
 async function joinPrivate(){
  const code=prompt("Enter the 4-digit room code:");
  if(!code)return;
- try{await joinRoom(code.trim());}
- catch(e){status(e.message);}
+
+ try{
+  await joinRoom(code.trim());
+ }catch(e){
+  status(e.message);
+ }
 }
+
 async function joinPublic(){
  try{
   await authReady;
+  if(!auth.currentUser)throw Error("PLAYER NOT SIGNED IN");
+
   status("FINDING PUBLIC PVP SERVER...");
+
   const snap=await getDocs(collection(db,"rooms"));
+
   const found=snap.docs.find(d=>{
    const r=d.data();
-   return r.visibility==="public"&&r.status==="open"&&
-    r.gameType==="PVP"&&(r.players||[]).length<10;
+   return r.visibility==="public"&&
+    r.status==="open"&&
+    r.gameType==="PVP"&&
+    (r.players||[]).length<10;
   });
-  if(found)await joinRoom(found.id);
-  else await createRoom("public","PVP");
- }catch(e){status("PUBLIC SERVER ERROR: "+e.message);}
+
+  if(found){
+   await joinRoom(found.id);
+  }else{
+   await createRoom("public","PVP");
+  }
+ }catch(e){
+  status("PUBLIC SERVER ERROR: "+e.message);
+ }
 }
+
 function openRoom(code){
  if(roomStop)roomStop();
+
  clearButtons();
  mode="WAITING";
  screenText("ROOM CODE: "+code);
+
  addButton("START MATCH",1.35,startMatch);
  addButton("LEAVE ROOM",1.0,leaveRoom);
+
  const ref=doc(db,"rooms",code);
+
  roomStop=onSnapshot(ref,s=>{
-  if(!s.exists()){status("ROOM CLOSED");return;}
+  if(!s.exists()){
+   status("ROOM CLOSED");
+   return;
+  }
+
   const r=s.data();
-  if(r.status==="started")beginPvp();
-  else status("ROOM "+code+" — "+(r.players||[]).length+" PLAYER(S)");
+
+  if(r.status==="started"){
+   beginPvp();
+  }else{
+   status("ROOM "+code+" — "+(r.players||[]).length+" PLAYER(S)");
+  }
+ },e=>{
+  status("ROOM SYNC ERROR: "+e.message);
  });
 }
+
 async function startMatch(){
  try{
   const ref=doc(db,"rooms",roomCode);
+
   await runTransaction(db,async tx=>{
    const s=await tx.get(ref);
    if(!s.exists())throw Error("ROOM NOT FOUND");
-   const r=s.data(),players=r.players||[],votes=r.votes||[];
-   if(!votes.includes(auth.currentUser.uid))votes.push(auth.currentUser.uid);
-   tx.update(ref,{votes,status:players.length>0&&players.every(p=>votes.includes(p))?"started":"open"});
+
+   const r=s.data();
+   const players=r.players||[];
+   const votes=r.votes||[];
+
+   if(!votes.includes(auth.currentUser.uid)){
+    votes.push(auth.currentUser.uid);
+   }
+
+   tx.update(ref,{
+    votes,
+    status:players.length>0&&
+     players.every(p=>votes.includes(p))?"started":"open"
+   });
   });
+
   status("VOTE SENT — WAITING FOR PLAYERS");
- }catch(e){status("START ERROR: "+e.message);}
+ }catch(e){
+  status("START ERROR: "+e.message);
+ }
 }
+
 async function leaveRoom(){
  if(roomStop){roomStop();roomStop=null;}
  if(syncStop){syncStop();syncStop=null;}
- const code=roomCode;roomCode="";
+
+ const code=roomCode;
+ roomCode="";
+
  try{
   if(code&&auth.currentUser){
    const ref=doc(db,"rooms",code);
+
    await runTransaction(db,async tx=>{
-    const s=await tx.get(ref);if(!s.exists())return;
+    const s=await tx.get(ref);
+    if(!s.exists())return;
+
     const r=s.data();
-    const players=(r.players||[]).filter(p=>p!==auth.currentUser.uid);
-    const votes=(r.votes||[]).filter(p=>p!==auth.currentUser.uid);
-    tx.update(ref,{players,votes,status:players.length?"open":"closed",
-     hostUid:r.hostUid===auth.currentUser.uid?(players[0]||""):r.hostUid});
+
+    const players=(r.players||[]).filter(
+     p=>p!==auth.currentUser.uid
+    );
+    const votes=(r.votes||[]).filter(
+     p=>p!==auth.currentUser.uid
+    );
+
+    tx.update(ref,{
+     players,
+     votes,
+     status:players.length?"open":"closed",
+     hostUid:r.hostUid===auth.currentUser.uid?
+      (players[0]||""):r.hostUid
+    });
    });
   }
- }catch(e){console.warn(e);}
+ }catch(e){
+  console.warn(e);
+ }
+
  showMenu();
 }
+
 function beginPvp(){
  if(mode==="PVP")return;
+
  mode="PVP";
  clearButtons();
  screenText("PVP MATCH");
  status("PVP MATCH — FIRE TO SHOOT");
+
  const ref=doc(db,"rooms",roomCode);
+
  if(syncStop)syncStop();
+
  syncStop=onSnapshot(ref,s=>{
   if(!s.exists())return;
-  const positions=s.data().positions||{};
-  remotePlayers=positions;
+  remotePlayers=s.data().positions||{};
   updateRemotePlayers();
  });
 }
 
 /* PLAYER AVATAR */
 const black=new THREE.MeshStandardMaterial({color:0x08090c});
+
 const lava=new THREE.MeshStandardMaterial({
- color:0xff102c,emissive:0xff001b,emissiveIntensity:1.3
+ color:0xff102c,
+ emissive:0xff001b,
+ emissiveIntensity:1.3
 });
-const torso=new THREE.Mesh(new THREE.SphereGeometry(.28,20,16),black);
-torso.scale.set(.86,.72,.68);scene.add(torso);
-const head=new THREE.Mesh(new THREE.SphereGeometry(.17,20,16),black);
+
+const torso=new THREE.Mesh(
+ new THREE.SphereGeometry(.28,20,16),
+ black
+);
+torso.scale.set(.86,.72,.68);
+scene.add(torso);
+
+const head=new THREE.Mesh(
+ new THREE.SphereGeometry(.17,20,16),
+ black
+);
 scene.add(head);
+
 const arms=[];
+
 for(let i=0;i<2;i++){
- const arm=new THREE.Mesh(new THREE.CylinderGeometry(.08,.1,1,12),black);
- const hand=new THREE.Mesh(new THREE.SphereGeometry(.09,12,10),black);
- const band=new THREE.Mesh(new THREE.TorusGeometry(.095,.012,8,20),lava);
+ const arm=new THREE.Mesh(
+  new THREE.CylinderGeometry(.08,.1,1,12),
+  black
+ );
+ const hand=new THREE.Mesh(
+  new THREE.SphereGeometry(.09,12,10),
+  black
+ );
+ const band=new THREE.Mesh(
+  new THREE.TorusGeometry(.095,.012,8,20),
+  lava
+ );
+
  scene.add(arm,hand,band);
  arms.push({arm,hand,band});
 }
+
 function segment(mesh,a,b){
  const d=new THREE.Vector3().subVectors(b,a);
  mesh.position.copy(a).add(b).multiplyScalar(.5);
  mesh.scale.y=d.length();
- mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
+ mesh.quaternion.setFromUnitVectors(
+  new THREE.Vector3(0,1,0),
+  d.normalize()
+ );
 }
 
-/* BOSS BATTLE */
-let boss=null,bossHP=0,bossMax=0,bossRewarded=false;
+/* BOSS BATTLE — TOUGH BUT PLAYABLE */
+let boss=null;
+let bossHP=0;
+let bossMax=0;
+let bossRewarded=false;
+let bossElapsed=0;
+let bossAttackTimer=0;
+let bossWarning=0;
+let bossAttackCount=0;
+let bossProjectiles=[];
+let bossPhase=1;
+let lastPlayerShot=0;
+
+const bossProjectileGeometry=new THREE.SphereGeometry(.16,12,10);
+
+const bossProjectileMaterial=new THREE.MeshStandardMaterial({
+ color:0xff1838,
+ emissive:0xff001e,
+ emissiveIntensity:2
+});
+
+function clearBossProjectiles(){
+ for(const p of bossProjectiles){
+  scene.remove(p.mesh);
+ }
+ bossProjectiles.length=0;
+}
+
 function startBoss(){
  clearButtons();
  mode="BOSS";
- bossHP=500;bossMax=500;bossRewarded=false;
+
+ health=100;
+ updateHUD();
+
+ bossHP=1500;
+ bossMax=1500;
+ bossRewarded=false;
+
+ bossElapsed=0;
+ bossAttackTimer=.7;
+ bossWarning=0;
+ bossAttackCount=0;
+ bossPhase=1;
+ lastPlayerShot=0;
+
+ clearBossProjectiles();
+
+ rig.position.set(0,0,-4.4);
+
  screenText("BOSS BATTLE");
- status("BOSS BATTLE — DEFEAT THE BOSS!");
+ status("BOSS BATTLE — DODGE THE RED BLASTS!");
+
  if(boss)scene.remove(boss);
+
  boss=new THREE.Group();
  boss.position.set(0,1,-7);
  scene.add(boss);
- const bossMat=new THREE.MeshStandardMaterial({color:0x300710,emissive:0x8b0018,emissiveIntensity:.7});
- const body=new THREE.Mesh(new THREE.SphereGeometry(.8,24,20),bossMat);
- body.scale.y=1.3;boss.add(body);
- const bossHead=new THREE.Mesh(new THREE.SphereGeometry(.48,20,16),bossMat);
- bossHead.position.y=1.1;boss.add(bossHead);
+
+ const bossMat=new THREE.MeshStandardMaterial({
+  color:0x300710,
+  emissive:0x8b0018,
+  emissiveIntensity:.7
+ });
+
+ const body=new THREE.Mesh(
+  new THREE.SphereGeometry(.8,24,20),
+  bossMat
+ );
+ body.scale.y=1.3;
+ boss.add(body);
+
+ const bossHead=new THREE.Mesh(
+  new THREE.SphereGeometry(.48,20,16),
+  bossMat
+ );
+ bossHead.position.y=1.1;
+ boss.add(bossHead);
+
  for(let i=0;i<2;i++){
-  const eye=new THREE.Mesh(new THREE.SphereGeometry(.08,12,12),lava);
-  eye.position.set(i? .2:-.2,1.15,-.42);boss.add(eye);
+  const eye=new THREE.Mesh(
+   new THREE.SphereGeometry(.08,12,12),
+   lava
+  );
+  eye.position.set(i?.2:-.2,1.15,-.42);
+  boss.add(eye);
  }
+
+ const core=new THREE.Mesh(
+  new THREE.SphereGeometry(.23,16,12),
+  lava
+ );
+ core.position.set(0,.15,-.72);
+ boss.add(core);
 }
+
 function damageBoss(){
  if(mode!=="BOSS"||!boss||bossHP<=0)return;
- bossHP=Math.max(0,bossHP-25);
- status("BOSS HEALTH: "+bossHP+"/"+bossMax);
+
+ const now=performance.now();
+ if(now-lastPlayerShot<160)return;
+
+ lastPlayerShot=now;
+ bossHP=Math.max(0,bossHP-15);
+
+ status(
+  "BOSS HEALTH: "+bossHP+"/"+bossMax+
+  " — YOUR HEALTH: "+health
+ );
+
+ if(bossHP<=bossMax*.5&&bossPhase===1){
+  bossPhase=2;
+  status("BOSS ENRAGED! KEEP MOVING!");
+
+  if(boss.children[0]?.material){
+   boss.children[0].material.emissiveIntensity=1.5;
+  }
+ }
+
  if(bossHP===0&&!bossRewarded){
   bossRewarded=true;
+  mode="BOSS_WON";
+
+  clearBossProjectiles();
   earnMoney(5000);
+
   screenText("BOSS DEFEATED!");
   status("BOSS DEFEATED! YOU EARNED $5,000!");
-  scene.remove(boss);boss=null;
+
+  scene.remove(boss);
+  boss=null;
+
+  addButton("FIGHT AGAIN",1.0,startBoss);
+  addButton("BACK TO MENU",.65,showMenu);
+ }
+}
+
+function fireBossProjectile(targetOffset=0){
+ if(!boss)return;
+
+ const origin=boss.localToWorld(
+  new THREE.Vector3(0,1.1,-.2)
+ );
+
+ const target=new THREE.Vector3();
+ camera.getWorldPosition(target);
+
+ const direction=target.sub(origin).normalize();
+
+ if(targetOffset){
+  direction.applyAxisAngle(
+   new THREE.Vector3(0,1,0),
+   targetOffset
+  ).normalize();
+ }
+
+ const mesh=new THREE.Mesh(
+  bossProjectileGeometry,
+  bossProjectileMaterial
+ );
+
+ mesh.position.copy(origin);
+ scene.add(mesh);
+
+ const speed=bossPhase===2?6.6:5.5;
+ const damage=bossPhase===2?21:16;
+
+ bossProjectiles.push({
+  mesh,
+  velocity:direction.multiplyScalar(speed),
+  damage,
+  life:5
+ });
+}
+
+function updateBossFight(dt){
+ if(mode!=="BOSS"||!boss)return;
+
+ bossElapsed+=dt;
+
+ boss.rotation.y=Math.sin(bossElapsed*1.4)*.16;
+ boss.position.y=1+Math.sin(bossElapsed*2.2)*.08;
+
+ if(bossWarning>0){
+  bossWarning-=dt;
+
+  if(bossWarning<=0){
+   bossAttackCount++;
+
+   // Every third volley fires a three-shot fan.
+   if(bossAttackCount%3===0){
+    fireBossProjectile(-.22);
+    fireBossProjectile(0);
+    fireBossProjectile(.22);
+   }else{
+    fireBossProjectile();
+   }
+
+   bossAttackTimer=bossPhase===2?
+    1.25:(bossElapsed<60?1.65:2.05);
+  }
+ }else{
+  bossAttackTimer-=dt;
+
+  if(bossAttackTimer<=0){
+   bossWarning=.48;
+
+   status(
+    bossPhase===2?
+    "BOSS ENRAGED — DODGE NOW!":
+    "BOSS IS CHARGING — MOVE NOW!"
+   );
+  }
+ }
+
+ const player=new THREE.Vector3();
+ camera.getWorldPosition(player);
+
+ for(let i=bossProjectiles.length-1;i>=0;i--){
+  const p=bossProjectiles[i];
+
+  p.mesh.position.addScaledVector(p.velocity,dt);
+  p.life-=dt;
+
+  if(p.mesh.position.distanceTo(player)<.48){
+   health=Math.max(0,health-p.damage);
+   updateHUD();
+
+   scene.remove(p.mesh);
+   bossProjectiles.splice(i,1);
+
+   status("HIT! HEALTH: "+health+" — KEEP DODGING!");
+
+   if(health<=0){
+    mode="BOSS_LOST";
+    clearBossProjectiles();
+
+    screenText("YOU WERE DEFEATED");
+    status("BOSS WON THIS ROUND — TRY AGAIN OR RETURN TO MENU");
+
+    if(boss){
+     scene.remove(boss);
+     boss=null;
+    }
+
+    addButton("RETRY BOSS",1.0,startBoss);
+    addButton("BACK TO MENU",.65,showMenu);
+    return;
+   }
+  }else if(
+   p.life<=0||
+   p.mesh.position.distanceTo(player)>24
+  ){
+   scene.remove(p.mesh);
+   bossProjectiles.splice(i,1);
+  }
  }
 }
 
 /* SHOOTING */
-const ray=new THREE.Raycaster();
 function shoot(){
  if(mode==="BOSS"){
   damageBoss();
   return;
  }
+
  if(mode!=="PVP")return;
+
  status("PVP SHOT FIRED");
 }
+
 document.getElementById("fire").addEventListener("pointerdown",e=>{
- e.preventDefault();shoot();
+ e.preventDefault();
+ shoot();
 });
 
-/* VR */
+/* VR CONTROLLERS */
 const controllers=[];
+
 for(let i=0;i<2;i++){
  const c=renderer.xr.getController(i);
  c.addEventListener("select",shoot);
- rig.add(c);controllers.push(c);
+ rig.add(c);
+ controllers.push(c);
 }
+
 document.getElementById("enterVR").onclick=async()=>{
  try{
-  const session=await navigator.xr.requestSession("immersive-vr",{optionalFeatures:["local-floor","hand-tracking"]});
+  const session=await navigator.xr.requestSession(
+   "immersive-vr",
+   {optionalFeatures:["local-floor","hand-tracking"]}
+  );
+
   renderer.xr.setReferenceSpaceType("local-floor");
   await renderer.xr.setSession(session);
+
   computer.visible=true;
   showMenu();
+
   document.getElementById("enter").style.display="none";
   document.getElementById("enterVR").style.display="none";
   document.getElementById("hud").style.display="block";
+
   session.addEventListener("end",()=>{
    document.getElementById("enter").style.display="block";
    document.getElementById("enterVR").style.display="block";
    document.getElementById("hud").style.display="none";
    computer.visible=false;
   });
- }catch(e){status("VR ERROR: "+e.message);}
+ }catch(e){
+  status("VR ERROR: "+e.message);
+ }
 };
+
 if(navigator.xr){
  navigator.xr.isSessionSupported("immersive-vr").then(ok=>{
-  if(ok)document.getElementById("enterVR").style.display="block";
+  if(ok){
+   document.getElementById("enterVR").style.display="block";
+  }
  }).catch(()=>{});
 }
 
 /* MOBILE GAME */
-let mobile=false,yaw=0,pitch=0;
+let mobile=false;
+let yaw=0;
+let pitch=0;
+
 document.getElementById("enter").onclick=()=>{
- mobile=true;rig.position.set(0,0,-4.4);
- computer.visible=true;showMenu();
+ mobile=true;
+ rig.position.set(0,0,-4.4);
+
+ computer.visible=true;
+ showMenu();
+
  document.getElementById("enter").style.display="none";
  document.getElementById("enterVR").style.display="none";
  document.getElementById("controls").style.display="block";
  document.getElementById("hud").style.display="block";
+
  status("REDLINE ARENA — MOBILE READY");
 };
 
-/* FIXED COMPUTER BUTTON TOUCH + VR
-   Handle menu taps before camera-look drag captures the pointer. */
+/* COMPUTER BUTTON TOUCH */
 const menuRaycaster=new THREE.Raycaster();
 const menuPointer=new THREE.Vector2();
 
 function selectComputerButton(clientX,clientY){
  if(!computer.visible||buttons.length===0)return false;
+
  const rect=renderer.domElement.getBoundingClientRect();
  if(rect.width===0||rect.height===0)return false;
 
@@ -492,6 +924,7 @@ function selectComputerButton(clientX,clientY){
 
  camera.updateMatrixWorld(true);
  computer.updateMatrixWorld(true);
+
  menuRaycaster.setFromCamera(menuPointer,camera);
  menuRaycaster.near=0;
  menuRaycaster.far=30;
@@ -500,15 +933,20 @@ function selectComputerButton(clientX,clientY){
  if(!hits.length)return false;
 
  const action=hits[0].object.userData.action;
+
  if(typeof action==="function"){
   action();
   return true;
  }
+
  return false;
 }
 
 function updateRemotePlayers(){
- /* Remote player rendering will be added with the full multiplayer avatar sync. */
+ /*
+  Remote avatar rendering is not implemented yet.
+  This currently receives the players' position data.
+ */
  for(const [uid,pos] of Object.entries(remotePlayers)){
   if(uid===auth.currentUser?.uid)continue;
   if(!pos||!Array.isArray(pos))continue;
@@ -516,72 +954,167 @@ function updateRemotePlayers(){
 }
 
 /* MOBILE JOYSTICK */
-const stick=document.getElementById("stick"),knob=document.getElementById("knob");
-let sx=0,sy=0,pointer=null;
-function moveStick(e){
- const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
- let x=e.clientX-cx,y=e.clientY-cy,l=Math.hypot(x,y),max=42;
- if(l>max){x=x/l*max;y=y/l*max;}
- sx=x/max;sy=y/max;knob.style.transform=`translate(${x}px,${y}px)`;
-}
-stick.onpointerdown=e=>{pointer=e.pointerId;stick.setPointerCapture(pointer);moveStick(e);};
-stick.onpointermove=e=>{if(e.pointerId===pointer)moveStick(e);};
-function resetStick(){sx=0;sy=0;pointer=null;knob.style.transform="translate(0,0)";}
-stick.onpointerup=resetStick;stick.onpointercancel=resetStick;
+const stick=document.getElementById("stick");
+const knob=document.getElementById("knob");
 
-let jump=false,vy=0,grounded=true;
-document.getElementById("jump").onpointerdown=e=>{e.preventDefault();jump=true;};
+let sx=0;
+let sy=0;
+let pointer=null;
+
+function moveStick(e){
+ const r=stick.getBoundingClientRect();
+ const cx=r.left+r.width/2;
+ const cy=r.top+r.height/2;
+
+ let x=e.clientX-cx;
+ let y=e.clientY-cy;
+ let l=Math.hypot(x,y);
+ const max=42;
+
+ if(l>max){
+  x=x/l*max;
+  y=y/l*max;
+ }
+
+ sx=x/max;
+ sy=y/max;
+
+ knob.style.transform=`translate(${x}px,${y}px)`;
+}
+
+stick.onpointerdown=e=>{
+ pointer=e.pointerId;
+ stick.setPointerCapture(pointer);
+ moveStick(e);
+};
+
+stick.onpointermove=e=>{
+ if(e.pointerId===pointer)moveStick(e);
+};
+
+function resetStick(){
+ sx=0;
+ sy=0;
+ pointer=null;
+ knob.style.transform="translate(0,0)";
+}
+
+stick.onpointerup=resetStick;
+stick.onpointercancel=resetStick;
+
+let jump=false;
+let vy=0;
+let grounded=true;
+
+document.getElementById("jump").onpointerdown=e=>{
+ e.preventDefault();
+ jump=true;
+};
+
 document.getElementById("jump").onpointerup=()=>jump=false;
 document.getElementById("jump").onpointercancel=()=>jump=false;
-let lookId=null,lx=0,ly=0;
 
-/* One pointer handler: check computer buttons BEFORE starting camera-look drag. */
+let lookId=null;
+let lx=0;
+let ly=0;
+
+/* COMPUTER BUTTONS BEFORE CAMERA LOOK */
 renderer.domElement.addEventListener("pointerdown",e=>{
  if(!mobile||!computer.visible)return;
+
  if(selectComputerButton(e.clientX,e.clientY)){
   e.preventDefault();
   e.stopPropagation();
   return;
  }
+
  if(e.clientX<innerWidth*.42)return;
+
  lookId=e.pointerId;
  lx=e.clientX;
  ly=e.clientY;
- try{renderer.domElement.setPointerCapture(lookId);}catch(_){}
+
+ try{
+  renderer.domElement.setPointerCapture(lookId);
+ }catch(_){}
 });
+
 renderer.domElement.addEventListener("pointermove",e=>{
  if(e.pointerId!==lookId)return;
+
  yaw-=(e.clientX-lx)*.004;
  pitch-=(e.clientY-ly)*.003;
+
  pitch=THREE.MathUtils.clamp(pitch,-1.1,1.1);
- lx=e.clientX;ly=e.clientY;
- rig.rotation.y=yaw;camera.rotation.x=pitch;
+
+ lx=e.clientX;
+ ly=e.clientY;
+
+ rig.rotation.y=yaw;
+ camera.rotation.x=pitch;
 });
+
 function stopLook(e){
  if(e.pointerId===lookId)lookId=null;
 }
+
 renderer.domElement.addEventListener("pointerup",stopLook);
 renderer.domElement.addEventListener("pointercancel",stopLook);
 
 /* PLAYER MOVEMENT */
 const clock=new THREE.Clock();
 let previousSync=0;
+
 function updatePlayer(dt){
  if(!mobile&&!renderer.xr.isPresenting)return;
+
  const forward=new THREE.Vector3();
- camera.getWorldDirection(forward);forward.y=0;forward.normalize();
- const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
+ camera.getWorldDirection(forward);
+ forward.y=0;
+ forward.normalize();
+
+ const right=new THREE.Vector3().crossVectors(
+  forward,
+  new THREE.Vector3(0,1,0)
+ ).normalize();
+
  rig.position.addScaledVector(forward,-sy*2.8*dt);
  rig.position.addScaledVector(right,sx*2.8*dt);
- if(jump&&grounded){vy=4.2;grounded=false;}
- vy-=9.8*dt;rig.position.y+=vy*dt;
- if(rig.position.y<=0){rig.position.y=0;vy=0;grounded=true;}
+
+ if(jump&&grounded){
+  vy=4.2;
+  grounded=false;
+ }
+
+ vy-=9.8*dt;
+ rig.position.y+=vy*dt;
+
+ if(rig.position.y<=0){
+  rig.position.y=0;
+  vy=0;
+  grounded=true;
+ }
+
  camera.getWorldPosition(head.position);
- torso.position.copy(head.position);torso.position.y-=.65;
+
+ torso.position.copy(head.position);
+ torso.position.y-=.65;
+
  for(let i=0;i<2;i++){
   const side=i===0?-1:1;
-  const shoulder=new THREE.Vector3(head.position.x+side*.2,head.position.y-.35,head.position.z);
-  const hand=new THREE.Vector3(head.position.x+side*.5,head.position.y-.7,head.position.z-.3);
+
+  const shoulder=new THREE.Vector3(
+   head.position.x+side*.2,
+   head.position.y-.35,
+   head.position.z
+  );
+
+  const hand=new THREE.Vector3(
+   head.position.x+side*.5,
+   head.position.y-.7,
+   head.position.z-.3
+  );
+
   segment(arms[i].arm,shoulder,hand);
   arms[i].hand.position.copy(hand);
   arms[i].band.position.copy(shoulder).lerp(hand,.7);
@@ -591,32 +1124,45 @@ function updatePlayer(dt){
 /* BASIC PVP POSITION UPDATES */
 async function syncPosition(){
  if(mode!=="PVP"||!roomCode||!auth.currentUser)return;
+
  const now=performance.now();
  if(now-previousSync<500)return;
+
  previousSync=now;
+
  try{
   const ref=doc(db,"rooms",roomCode);
   const positions={...remotePlayers};
+
   positions[auth.currentUser.uid]=[
    Number(rig.position.x.toFixed(2)),
    Number(rig.position.y.toFixed(2)),
    Number(rig.position.z.toFixed(2))
   ];
+
   await updateDoc(ref,{positions});
- }catch(e){console.warn("Position sync:",e.message);}
+ }catch(e){
+  console.warn("Position sync:",e.message);
+ }
 }
 
+/* GAME LOOP */
 renderer.setAnimationLoop(()=>{
  const dt=Math.min(clock.getDelta(),.05);
+
  if(mobile||renderer.xr.isPresenting){
   updatePlayer(dt);
   syncPosition();
  }
+
  if(boss){
-  boss.rotation.y+=dt*.25;
+  updateBossFight(dt);
  }
+
  renderer.render(scene,camera);
 });
+
+/* RESIZE */
 window.addEventListener("resize",()=>{
  camera.aspect=innerWidth/innerHeight;
  camera.updateProjectionMatrix();
