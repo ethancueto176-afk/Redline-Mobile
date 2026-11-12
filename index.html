@@ -26,7 +26,7 @@ button{cursor:pointer}
 #knob{position:absolute;left:37px;top:37px;width:45px;height:45px;
  border-radius:50%;background:#ff263f;border:2px solid white}
 #jump,#fire{position:absolute;right:22px;width:76px;height:76px;border-radius:50%;
- border:2px solid white;background:#b5122c;color:white;font-weight:bold;pointer-events:auto}
+ border:2px solid white;background:#b5122c;color:white;font-weight:bold;pointer-events:auto;touch-action:none}
 #jump{bottom:30px}#fire{bottom:120px;background:#e51b35}
 #hint{position:absolute;right:10px;bottom:205px;font-size:11px;color:#ddd}
 </style>
@@ -61,7 +61,7 @@ import {
 
 /* FIREBASE */
 const firebaseConfig={
- apiKey:"AIzaSyCvB7N_XK2kLYhwn8xwHI5It4TS7dMjKQk",
+ apiKey:"AIzaSyCv7B7N_X2kLYhwn8xwHI5It4TS7dMjKQk",
  authDomain:"redline-arena.firebaseapp.com",
  projectId:"redline-arena",
  storageBucket:"redline-arena.firebasestorage.app",
@@ -109,6 +109,7 @@ renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.xr.enabled=true;
 renderer.shadowMap.enabled=true;
+renderer.domElement.style.touchAction="none";
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x333344,2));
@@ -210,7 +211,6 @@ function showMenu(){
  clearButtons();
  screenText("CHOOSE YOUR GAME");
 
- /* Money is shown on the computer beside the server options. */
  const balance=box(.9,.22,.06,0x292b33,.7,2.85,-.1,computer);
  const balanceText=new THREE.Mesh(
   new THREE.PlaneGeometry(.85,.18),
@@ -429,7 +429,6 @@ function shoot(){
  }
  if(mode!=="PVP")return;
  status("PVP SHOT FIRED");
- /* Prototype shot: online hit validation is not authoritative. */
 }
 document.getElementById("fire").addEventListener("pointerdown",e=>{
  e.preventDefault();shoot();
@@ -478,18 +477,38 @@ document.getElementById("enter").onclick=()=>{
  status("REDLINE ARENA — MOBILE READY");
 };
 
-/* COMPUTER BUTTON TOUCH + VR LASER */
-const raycaster=new THREE.Raycaster();
-renderer.domElement.addEventListener("click",e=>{
- if(!mobile||!computer.visible)return;
- const r=renderer.domElement.getBoundingClientRect();
- const p=new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
- raycaster.setFromCamera(p,camera);
- const hits=raycaster.intersectObjects(buttons);
- if(hits.length)hits[0].object.userData.action?.();
-});
+/* FIXED COMPUTER BUTTON TOUCH + VR
+   Handle menu taps before camera-look drag captures the pointer. */
+const menuRaycaster=new THREE.Raycaster();
+const menuPointer=new THREE.Vector2();
+
+function selectComputerButton(clientX,clientY){
+ if(!computer.visible||buttons.length===0)return false;
+ const rect=renderer.domElement.getBoundingClientRect();
+ if(rect.width===0||rect.height===0)return false;
+
+ menuPointer.x=((clientX-rect.left)/rect.width)*2-1;
+ menuPointer.y=-((clientY-rect.top)/rect.height)*2+1;
+
+ camera.updateMatrixWorld(true);
+ computer.updateMatrixWorld(true);
+ menuRaycaster.setFromCamera(menuPointer,camera);
+ menuRaycaster.near=0;
+ menuRaycaster.far=30;
+
+ const hits=menuRaycaster.intersectObjects(buttons,false);
+ if(!hits.length)return false;
+
+ const action=hits[0].object.userData.action;
+ if(typeof action==="function"){
+  action();
+  return true;
+ }
+ return false;
+}
+
 function updateRemotePlayers(){
- /* Display remote players from the room's shared position list. */
+ /* Remote player rendering will be added with the full multiplayer avatar sync. */
  for(const [uid,pos] of Object.entries(remotePlayers)){
   if(uid===auth.currentUser?.uid)continue;
   if(!pos||!Array.isArray(pos))continue;
@@ -515,10 +534,20 @@ document.getElementById("jump").onpointerdown=e=>{e.preventDefault();jump=true;}
 document.getElementById("jump").onpointerup=()=>jump=false;
 document.getElementById("jump").onpointercancel=()=>jump=false;
 let lookId=null,lx=0,ly=0;
+
+/* One pointer handler: check computer buttons BEFORE starting camera-look drag. */
 renderer.domElement.addEventListener("pointerdown",e=>{
- if(!mobile||e.clientX<innerWidth*.42)return;
- lookId=e.pointerId;lx=e.clientX;ly=e.clientY;
- renderer.domElement.setPointerCapture(lookId);
+ if(!mobile||!computer.visible)return;
+ if(selectComputerButton(e.clientX,e.clientY)){
+  e.preventDefault();
+  e.stopPropagation();
+  return;
+ }
+ if(e.clientX<innerWidth*.42)return;
+ lookId=e.pointerId;
+ lx=e.clientX;
+ ly=e.clientY;
+ try{renderer.domElement.setPointerCapture(lookId);}catch(_){}
 });
 renderer.domElement.addEventListener("pointermove",e=>{
  if(e.pointerId!==lookId)return;
@@ -528,8 +557,11 @@ renderer.domElement.addEventListener("pointermove",e=>{
  lx=e.clientX;ly=e.clientY;
  rig.rotation.y=yaw;camera.rotation.x=pitch;
 });
-renderer.domElement.addEventListener("pointerup",()=>lookId=null);
-renderer.domElement.addEventListener("pointercancel",()=>lookId=null);
+function stopLook(e){
+ if(e.pointerId===lookId)lookId=null;
+}
+renderer.domElement.addEventListener("pointerup",stopLook);
+renderer.domElement.addEventListener("pointercancel",stopLook);
 
 /* PLAYER MOVEMENT */
 const clock=new THREE.Clock();
