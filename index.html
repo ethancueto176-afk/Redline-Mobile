@@ -1,57 +1,67 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>REDLINE ARENA</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;overflow:hidden;background:#080808;color:white;font-family:Arial,sans-serif}
-#enter{position:fixed;z-index:5;top:40%;left:50%;transform:translate(-50%,-50%);background:#e51b35;color:white;border:3px solid white;border-radius:16px;padding:24px 42px;font-size:30px;font-weight:bold;box-shadow:0 0 25px #ff1735}
-#enterVR{position:fixed;z-index:5;top:52%;left:50%;transform:translate(-50%,-50%);background:#171923;color:#fff;border:2px solid #ff263f;border-radius:12px;padding:13px 24px;font-size:17px;font-weight:bold;display:none}
-#mobileControls{position:fixed;inset:0;z-index:4;display:none;pointer-events:none}
-#stickBase{position:absolute;left:24px;bottom:28px;width:132px;height:132px;border:3px solid #ffffff77;border-radius:50%;background:#1119;pointer-events:auto;touch-action:none}
-#stickKnob{position:absolute;left:39px;top:39px;width:48px;height:48px;border-radius:50%;background:#ff263f;border:2px solid white;box-shadow:0 0 15px #ff1735}
-#jump{position:absolute;right:28px;bottom:42px;width:82px;height:82px;border-radius:50%;border:3px solid white;background:#b5122c;color:white;font-weight:bold;font-size:16px;pointer-events:auto;touch-action:none}
-#lookHint{position:absolute;right:18px;bottom:135px;color:#ffffff99;font-size:12px;text-align:center;width:110px}
-#status{position:fixed;z-index:5;bottom:15px;width:100%;text-align:center;pointer-events:none;font-weight:bold;text-shadow:0 0 8px black;padding:0 12px}
-canvas{display:block}
+body{margin:0;overflow:hidden;background:#080808;color:white;font-family:Arial}
+button{cursor:pointer}
+#enter,#enterVR{
+ position:fixed;z-index:10;left:50%;transform:translateX(-50%);
+ padding:18px 30px;border:2px solid white;border-radius:12px;
+ background:#c91430;color:white;font-size:22px;font-weight:bold
+}
+#enter{top:40%}#enterVR{top:52%;display:none;background:#171923}
+#status{position:fixed;z-index:8;bottom:12px;width:100%;text-align:center;
+ pointer-events:none;text-shadow:0 2px 5px black;font-weight:bold}
+#hud{position:fixed;z-index:8;top:12px;left:12px;display:none;
+ background:#111d;padding:10px 14px;border:1px solid #ff263f;border-radius:9px}
+#money{color:#ffd84a;font-weight:bold;font-size:18px}
+#health{color:#ff5267;margin-top:5px}
+#controls{position:fixed;inset:0;z-index:7;display:none;pointer-events:none}
+#stick{position:absolute;left:22px;bottom:25px;width:125px;height:125px;
+ border:3px solid #ffffff88;border-radius:50%;background:#1119;pointer-events:auto;touch-action:none}
+#knob{position:absolute;left:37px;top:37px;width:45px;height:45px;
+ border-radius:50%;background:#ff263f;border:2px solid white}
+#jump,#fire{position:absolute;right:22px;width:76px;height:76px;border-radius:50%;
+ border:2px solid white;background:#b5122c;color:white;font-weight:bold;pointer-events:auto}
+#jump{bottom:30px}#fire{bottom:120px;background:#e51b35}
+#hint{position:absolute;right:10px;bottom:205px;font-size:11px;color:#ddd}
 </style>
 </head>
 <body>
 <button id="enter">ENTER GAME</button>
 <button id="enterVR">ENTER VR</button>
-<div id="mobileControls">
- <div id="stickBase"><div id="stickKnob"></div></div>
- <button id="jump">JUMP</button>
- <div id="lookHint">DRAG RIGHT SIDE TO LOOK</div>
+
+<div id="hud">
+ <div id="money">MONEY: $0</div>
+ <div id="health">HEALTH: 100</div>
 </div>
-<div id="status">REDLINE ARENA — CONNECTING...</div>
+
+<div id="controls">
+ <div id="stick"><div id="knob"></div></div>
+ <button id="jump">JUMP</button>
+ <button id="fire">FIRE</button>
+ <div id="hint">DRAG RIGHT SIDE TO LOOK</div>
+</div>
+<div id="status">REDLINE ARENA — READY</div>
 
 <script type="module">
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-
-import {initializeApp} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js';
-
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import {initializeApp} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js";
 import {
- getFirestore,doc,getDoc,setDoc,serverTimestamp,
- runTransaction,collection,getDocs,onSnapshot
-} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js';
-
+ getFirestore,doc,getDoc,setDoc,updateDoc,getDocs,collection,
+ onSnapshot,runTransaction,serverTimestamp
+} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-firestore.js";
 import {
- getAuth,
- signInAnonymously,
- setPersistence,
- browserLocalPersistence,
- onAuthStateChanged
-} from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
+ getAuth,signInAnonymously,setPersistence,browserLocalPersistence
+} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
 
-// ===================================
-// FIREBASE CONNECTION — MOBILE V2
-// ===================================
+/* FIREBASE */
 const firebaseConfig={
- apiKey: "AIzaSyCvB7N_XK2kLYhwn8xwHI5It4TS7dMjKQk",
+ apiKey:"AIzaSyCvB7N_XK2kLYhwn8xwHI5It4TS7dMjKQk",
  authDomain:"redline-arena.firebaseapp.com",
  projectId:"redline-arena",
  storageBucket:"redline-arena.firebasestorage.app",
@@ -59,1437 +69,527 @@ const firebaseConfig={
  appId:"1:94653220727:web:ec7d1fe122a000bb1b4372",
  measurementId:"G-CXG70DQ206"
 };
-
-const firebaseApp=initializeApp(firebaseConfig);
-const db=getFirestore(firebaseApp);
-const auth=getAuth(firebaseApp);
-
-let currentRoomCode="";
-let roomUnsubscribe=null;
-let firebaseReady=false;
-
-function setStatus(message){
- document.getElementById("status").textContent=message;
-}
-
-// ===================================
-// PERSISTENT PLAYER SIGN-IN
-// ===================================
-// This keeps the anonymous Firebase player ID in the
-// same browser when the player refreshes or reopens the game.
-
+const app=initializeApp(firebaseConfig);
+const db=getFirestore(app);
+const auth=getAuth(app);
+let ready=false;
 const authReady=setPersistence(auth,browserLocalPersistence)
-.then(()=>new Promise((resolve,reject)=>{
- let unsubscribe=()=>{};
+ .then(()=>signInAnonymously(auth))
+ .then(()=>{ready=true;status("PLAYER RECOGNIZED");})
+ .catch(e=>status("FIREBASE ERROR: "+e.message));
 
- unsubscribe=onAuthStateChanged(auth,async user=>{
-  unsubscribe();
-
-  try{
-   if(!user){
-    const result=await signInAnonymously(auth);
-    user=result.user;
-   }
-
-   firebaseReady=true;
-
-   console.log("REDLINE PLAYER ID:",user.uid);
-
-   setStatus("REDLINE ARENA — PLAYER RECOGNIZED");
-
-   resolve(user);
-  }catch(error){
-   console.error("Firebase sign-in error:",error);
-   setStatus("FIREBASE LOGIN ERROR: "+(error.code||error.message));
-   reject(error);
-  }
- },error=>{
-  console.error("Firebase auth state error:",error);
-  setStatus("FIREBASE ERROR: "+(error.code||error.message));
-  reject(error);
- });
-}))
-.catch(error=>{
- console.error("Firebase persistence error:",error);
- setStatus("FIREBASE ERROR: "+(error.code||error.message));
- throw error;
-});
-
-function stopRoomListener(){
- if(roomUnsubscribe){
-  roomUnsubscribe();
-  roomUnsubscribe=null;
- }
+/* PLAYER ACCOUNT */
+let money=Number(localStorage.getItem("redlineMoney")||0);
+let health=100;
+function updateHUD(){
+ document.getElementById("money").textContent="MONEY: $"+money.toLocaleString();
+ document.getElementById("health").textContent="HEALTH: "+health;
 }
-
-function makeRoomCode(){
- return String(Math.floor(1000+Math.random()*9000));
+function earnMoney(amount){
+ money+=amount;
+ localStorage.setItem("redlineMoney",money);
+ updateHUD();
 }
+function status(s){document.getElementById("status").textContent=s;}
+updateHUD();
 
-// ===================================
-// CREATE ROOM
-// ===================================
-async function createRoom(visibility){
- try{
-  setStatus("CREATING "+visibility.toUpperCase()+" ROOM...");
-  await authReady;
-
-  const uid=auth.currentUser.uid;
-
-  for(let attempt=0;attempt<12;attempt++){
-   const code=makeRoomCode();
-   const roomRef=doc(db,"rooms",code);
-   const roomSnap=await getDoc(roomRef);
-
-   if(roomSnap.exists())continue;
-
-   await setDoc(roomRef,{
-    code,
-    hostUid:uid,
-    players:[uid],
-    votes:[],
-    visibility,
-    status:"open",
-    createdAt:serverTimestamp()
-   });
-
-   currentRoomCode=code;
-   openWaitingRoom(code);
-   return;
-  }
-
-  setStatus("COULD NOT CREATE ROOM — TRY AGAIN");
- }catch(error){
-  console.error("Create room error:",error);
-  setStatus("ROOM ERROR: "+(error.code||error.message));
- }
-}
-
-// ===================================
-// JOIN ROOM
-// ===================================
-async function joinRoom(code){
- await authReady;
-
- const roomRef=doc(db,"rooms",code);
-
- await runTransaction(db,async transaction=>{
-  const snap=await transaction.get(roomRef);
-
-  if(!snap.exists())throw new Error("ROOM_NOT_FOUND");
-
-  const room=snap.data();
-
-  if(room.status!=="open")throw new Error("ROOM_CLOSED");
-
-  const players=Array.isArray(room.players)
-   ?room.players
-   :[room.hostUid].filter(Boolean);
-
-  if(!players.includes(auth.currentUser.uid)){
-   players.push(auth.currentUser.uid);
-  }
-
-  transaction.update(roomRef,{players});
- });
-
- currentRoomCode=code;
- openWaitingRoom(code);
-}
-
-async function joinPrivateRoom(){
- const entered=prompt("Enter your friend's 4-digit room code:");
-
- if(!entered)return;
-
- const code=entered.trim();
-
- if(!/^\d{4}$/.test(code)){
-  setStatus("PLEASE ENTER A 4-DIGIT CODE");
-  return;
- }
-
- try{
-  setStatus("JOINING ROOM "+code+"...");
-  await joinRoom(code);
- }catch(error){
-  console.error("Join room error:",error);
-
-  const message=error.message==="ROOM_NOT_FOUND"
-   ?"ROOM NOT FOUND":
-   error.message==="ROOM_CLOSED"
-   ?"THIS ROOM HAS ALREADY STARTED":
-   (error.code||error.message);
-
-  screenMessage(message);
-  setStatus("JOIN ERROR: "+message);
- }
-}
-
-// ===================================
-// PUBLIC MATCHMAKING
-// ===================================
-async function joinPublicServer(){
- try{
-  setStatus("FINDING A PUBLIC SERVER...");
-  await authReady;
-
-  const roomsSnap=await getDocs(collection(db,"rooms"));
-
-  const openRoom=roomsSnap.docs.find(item=>{
-   const room=item.data();
-
-   const players=Array.isArray(room.players)
-    ?room.players
-    :[room.hostUid].filter(Boolean);
-
-   return room.visibility==="public" &&
-    room.status==="open" &&
-    players.length<10 &&
-    !players.includes(auth.currentUser.uid);
-  });
-
-  if(openRoom){
-   await joinRoom(openRoom.id);
-   setStatus("JOINED PUBLIC SERVER");
-   return;
-  }
-
-  setStatus("NO OPEN PUBLIC SERVER — CREATING ONE...");
-  await createRoom("public");
-
- }catch(error){
-  console.error("Public matchmaking error:",error);
-  setStatus("PUBLIC SERVER ERROR: "+(error.code||error.message));
- }
-}
-
-// ===================================
-// VOTE TO START
-// ===================================
-async function voteToStart(){
- if(!currentRoomCode)return;
-
- try{
-  await authReady;
-
-  const roomRef=doc(db,"rooms",currentRoomCode);
-
-  let gameStarted=false;
-  let voteCount=0;
-  let playerCount=0;
-
-  await runTransaction(db,async transaction=>{
-   const snap=await transaction.get(roomRef);
-
-   if(!snap.exists())throw new Error("ROOM_NOT_FOUND");
-
-   const room=snap.data();
-
-   if(room.status!=="open")throw new Error("GAME_ALREADY_STARTED");
-
-   const players=Array.isArray(room.players)
-    ?room.players
-    :[room.hostUid].filter(Boolean);
-
-   const votes=Array.isArray(room.votes)?room.votes:[];
-
-   if(!players.includes(auth.currentUser.uid)){
-    throw new Error("NOT_IN_ROOM");
-   }
-
-   if(!votes.includes(auth.currentUser.uid)){
-    votes.push(auth.currentUser.uid);
-   }
-
-   gameStarted=players.length>0 &&
-    players.every(uid=>votes.includes(uid));
-
-   voteCount=votes.length;
-   playerCount=players.length;
-
-   transaction.update(roomRef,{
-    players,
-    votes,
-    status:gameStarted?"started":"open",
-    startedAt:gameStarted?serverTimestamp():null
-   });
-  });
-
-  if(gameStarted){
-   gameMode="MATCH";
-   screenMessage("MATCH STARTED!");
-   setStatus("EVERYONE VOTED — MATCH STARTED!");
-  }else{
-   setStatus("START VOTE: "+voteCount+"/"+playerCount+" PLAYERS");
-  }
-
- }catch(error){
-  console.error("Start vote error:",error);
-  setStatus("VOTE ERROR: "+(error.code||error.message));
- }
-}
-
-// ===================================
-// LEAVE ROOM
-// ===================================
-async function leaveRoom(){
- stopRoomListener();
-
- if(!currentRoomCode){
-  showMainMenu();
-  return;
- }
-
- const code=currentRoomCode;
- currentRoomCode="";
-
- try{
-  await authReady;
-
-  const roomRef=doc(db,"rooms",code);
-
-  await runTransaction(db,async transaction=>{
-   const snap=await transaction.get(roomRef);
-
-   if(!snap.exists())return;
-
-   const room=snap.data();
-
-   const players=Array.isArray(room.players)
-    ?room.players
-    :[room.hostUid].filter(Boolean);
-
-   const votes=Array.isArray(room.votes)?room.votes:[];
-
-   const uid=auth.currentUser.uid;
-
-   const remaining=players.filter(id=>id!==uid);
-   const remainingVotes=votes.filter(id=>id!==uid);
-
-   if(remaining.length===0){
-    transaction.update(roomRef,{
-     players:[],
-     votes:[],
-     status:"closed"
-    });
-   }else{
-    const changes={
-     players:remaining,
-     votes:remainingVotes
-    };
-
-    if(room.hostUid===uid){
-     changes.hostUid=remaining[0];
-    }
-
-    transaction.update(roomRef,changes);
-   }
-  });
-
- }catch(error){
-  console.error("Leave room error:",error);
- }
-
- showMainMenu();
- setStatus("YOU LEFT THE ROOM");
-}
-
-// ===================================
-// THREE.JS SETUP
-// ===================================
+/* THREE.JS */
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x090b12);
 scene.fog=new THREE.Fog(0x090b12,18,45);
 
-const playerRig=new THREE.Group();
-scene.add(playerRig);
-
+const rig=new THREE.Group();
+scene.add(rig);
 const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,100);
 camera.position.set(0,1.6,2);
-playerRig.add(camera);
+rig.add(camera);
 
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.xr.enabled=true;
 renderer.shadowMap.enabled=true;
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x333344,2));
+const redLight=new THREE.PointLight(0xff1735,35,25);
+redLight.position.set(0,4,-3);
+scene.add(redLight);
 
-const light=new THREE.PointLight(0xff1735,35,25);
-light.position.set(0,4,-3);
-scene.add(light);
-
-// ===================================
-// ARENA
-// ===================================
 const floor=new THREE.Mesh(
  new THREE.PlaneGeometry(18,18),
- new THREE.MeshStandardMaterial({color:0x20232b,roughness:.9})
+ new THREE.MeshStandardMaterial({color:0x20232b})
 );
-
 floor.rotation.x=-Math.PI/2;
 floor.position.z=-2;
-floor.receiveShadow=true;
 scene.add(floor);
-
 const grid=new THREE.GridHelper(18,36,0xff1735,0x444455);
 grid.position.set(0,.02,-2);
 scene.add(grid);
 
-function wall(x,y,z,w,h,d){
- const m=new THREE.Mesh(
-  new THREE.BoxGeometry(w,h,d),
-  new THREE.MeshStandardMaterial({color:0x252832})
- );
-
+function box(w,h,d,color,x,y,z,parent=scene){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+ new THREE.MeshStandardMaterial({color,roughness:.8}));
  m.position.set(x,y,z);
- m.receiveShadow=true;
  m.castShadow=true;
- scene.add(m);
-
+ m.receiveShadow=true;
+ parent.add(m);
  return m;
 }
-
+function wall(x,y,z,w,h,d){
+ box(w,h,d,0x252832,x,y,z);
+}
 wall(0,2,-11,18,4,.3);
 wall(-9,2,-2,.3,4,18);
 wall(9,2,-2,.3,4,18);
 wall(0,4,-2,18,.3,18);
 
-// ===================================
-// TEXT AND OBJECT HELPERS
-// ===================================
-function makeText(message,color="#ffffff"){
- const canvas=document.createElement("canvas");
- canvas.width=1024;
- canvas.height=256;
-
- const ctx=canvas.getContext("2d");
-
- ctx.fillStyle="#10131c";
- ctx.fillRect(0,0,1024,256);
-
- ctx.fillStyle=color;
- ctx.font="bold 65px Arial";
- ctx.textAlign="center";
- ctx.textBaseline="middle";
- ctx.fillText(message,512,128);
-
- const texture=new THREE.CanvasTexture(canvas);
- texture.colorSpace=THREE.SRGBColorSpace;
-
- return texture;
-}
-
-function solidBox(w,h,d,color,x,y,z,parent){
- const mesh=new THREE.Mesh(
-  new THREE.BoxGeometry(w,h,d),
-  new THREE.MeshStandardMaterial({color,roughness:.8})
- );
-
- mesh.position.set(x,y,z);
- mesh.castShadow=true;
- mesh.receiveShadow=true;
- parent.add(mesh);
-
- return mesh;
-}
-
-// ===================================
-// COMPUTER MENU
-// ===================================
+/* COMPUTER — NO TABLE */
 const computer=new THREE.Group();
 computer.position.set(0,0,-7);
 scene.add(computer);
 
-solidBox(2.8,.25,1.2,0x33343b,0,.9,0,computer);
-solidBox(.25,.9,.25,0x17191f,0,.4,0,computer);
-solidBox(2,1.55,.12,0x111827,0,2.05,-.25,computer);
+/* Monitor and stand only. The old tabletop has been removed. */
+box(2,1.55,.12,0x111827,0,2.05,-.25,computer);
+box(.25,.9,.25,0x17191f,0,1.05,0,computer);
 
-const screenFace=new THREE.Mesh(
+function textTexture(message,color="#ffffff"){
+ const c=document.createElement("canvas");
+ c.width=1024;c.height=256;
+ const x=c.getContext("2d");
+ x.fillStyle="#10131c";x.fillRect(0,0,1024,256);
+ x.fillStyle=color;x.font="bold 65px Arial";
+ x.textAlign="center";x.textBaseline="middle";
+ x.fillText(message,512,128);
+ const t=new THREE.CanvasTexture(c);
+ t.colorSpace=THREE.SRGBColorSpace;
+ return t;
+}
+const screen=new THREE.Mesh(
  new THREE.PlaneGeometry(1.85,1.4),
- new THREE.MeshBasicMaterial({map:makeText("REDLINE ARENA","#ff263f")})
+ new THREE.MeshBasicMaterial({map:textTexture("REDLINE ARENA","#ff263f")})
 );
+screen.position.set(0,2.05,-.18);
+computer.add(screen);
 
-screenFace.position.set(0,2.05,-.18);
-computer.add(screenFace);
-
-const menuButtons=[];
-
-function screenMessage(message){
- if(screenFace.material.map){
-  screenFace.material.map.dispose();
- }
-
- screenFace.material.map=makeText(message,"#ff4055");
- screenFace.material.needsUpdate=true;
+function screenText(s){
+ screen.material.map.dispose();
+ screen.material.map=textTexture(s,"#ff4055");
+ screen.material.needsUpdate=true;
 }
 
-function clearMenu(){
- for(const b of menuButtons){
-  computer.remove(b);
- }
-
- menuButtons.length=0;
+const buttons=[];
+function clearButtons(){
+ for(const b of buttons)computer.remove(b);
+ buttons.length=0;
 }
-
-function addComputerButton(label,y,action){
- const button=solidBox(
-  1.65,.27,.09,0x9d1025,0,y,-.08,computer
- );
-
- button.userData.action=action;
-
+function addButton(label,y,action){
+ const b=box(1.65,.27,.09,0x9d1025,0,y,-.08,computer);
+ b.userData.action=action;
  const labelMesh=new THREE.Mesh(
   new THREE.PlaneGeometry(1.5,.22),
-  new THREE.MeshBasicMaterial({map:makeText(label)})
+  new THREE.MeshBasicMaterial({map:textTexture(label)})
  );
-
  labelMesh.position.z=.052;
- button.add(labelMesh);
- menuButtons.push(button);
+ b.add(labelMesh);
+ buttons.push(b);
 }
+let mode="MENU";
+let roomCode="";
+let roomStop=null;
+let syncStop=null;
+let lastSync=0;
+let remotePlayers={};
 
-let gameMode="MENU";
-let mobileMode=false;
+function showMenu(){
+ if(roomStop){roomStop();roomStop=null;}
+ if(syncStop){syncStop();syncStop=null;}
+ roomCode="";
+ remotePlayers={};
+ mode="MENU";
+ clearButtons();
+ screenText("CHOOSE YOUR GAME");
 
-let mobileStickX=0;
-let mobileStickY=0;
-let mobileJumpDown=false;
-let mobileYaw=0;
-let mobilePitch=0;
+ /* Money is shown on the computer beside the server options. */
+ const balance=box(.9,.22,.06,0x292b33,.7,2.85,-.1,computer);
+ const balanceText=new THREE.Mesh(
+  new THREE.PlaneGeometry(.85,.18),
+  new THREE.MeshBasicMaterial({map:textTexture("$"+money,"#ffd84a")})
+ );
+ balanceText.position.z=.04;
+ balance.add(balanceText);
 
-const mobileKeys={};
-
-function showMainMenu(){
- stopRoomListener();
- currentRoomCode="";
-
- clearMenu();
- screenMessage("CHOOSE YOUR GAME");
-
- gameMode="MENU";
-
- addComputerButton("PRACTICE MODE",1.7,()=>{
-  gameMode="PRACTICE";
-  screenMessage("PRACTICE MODE");
-  setStatus("PRACTICE MODE — WALK AND JUMP!");
+ addButton("BOSS BATTLE",1.7,startBoss);
+ addButton("PLAYER VS PLAYER",1.35,()=>showPvpMenu());
+ addButton("PRACTICE MODE",1.0,()=>{
+  mode="PRACTICE";screenText("PRACTICE MODE");status("PRACTICE MODE");
  });
-
- addComputerButton("PUBLIC SERVER",1.35,joinPublicServer);
- addComputerButton("PRIVATE ROOMS",1.0,showPrivateMenu);
+ addButton("PUBLIC SERVER",.65,joinPublic);
+ addButton("PRIVATE ROOMS",.3,showPrivate);
+}
+function showPrivate(){
+ clearButtons();screenText("PRIVATE ROOMS");
+ addButton("CREATE ROOM",1.7,()=>createRoom("private","PVP"));
+ addButton("JOIN WITH CODE",1.35,joinPrivate);
+ addButton("BACK",1.0,showMenu);
+}
+function showPvpMenu(){
+ clearButtons();screenText("PLAYER VS PLAYER");
+ addButton("FIND PVP MATCH",1.7,joinPublic);
+ addButton("CREATE PRIVATE PVP",1.35,()=>createRoom("private","PVP"));
+ addButton("BACK",1.0,showMenu);
 }
 
-function showPrivateMenu(){
- clearMenu();
- screenMessage("PRIVATE ROOMS");
-
- addComputerButton("CREATE ROOM",1.7,()=>{
-  createRoom("private");
- });
-
- addComputerButton("JOIN WITH CODE",1.35,joinPrivateRoom);
- addComputerButton("BACK",1.0,showMainMenu);
-}
-
-function openWaitingRoom(code){
- stopRoomListener();
- clearMenu();
-
- gameMode="WAITING";
- screenMessage("ROOM CODE: "+code);
-
- addComputerButton("VOTE TO START",1.35,voteToStart);
- addComputerButton("LEAVE ROOM",1.0,leaveRoom);
-
- setStatus("ROOM "+code+" — WAITING FOR PLAYERS");
-
- const roomRef=doc(db,"rooms",code);
-
- roomUnsubscribe=onSnapshot(roomRef,snap=>{
-  if(!snap.exists()){
-   screenMessage("ROOM CLOSED");
-   setStatus("THIS ROOM NO LONGER EXISTS");
+/* FIREBASE ROOMS */
+function newCode(){return String(Math.floor(1000+Math.random()*9000));}
+async function createRoom(visibility,gameType="PVP"){
+ try{
+  await authReady;
+  status("CREATING ROOM...");
+  for(let i=0;i<12;i++){
+   const code=newCode(),ref=doc(db,"rooms",code);
+   if((await getDoc(ref)).exists())continue;
+   await setDoc(ref,{
+    code,hostUid:auth.currentUser.uid,
+    players:[auth.currentUser.uid],votes:[],
+    visibility,status:"open",gameType,
+    positions:{},createdAt:serverTimestamp()
+   });
+   roomCode=code;
+   openRoom(code);
    return;
   }
-
-  const room=snap.data();
-
-  const players=Array.isArray(room.players)
-   ?room.players
-   :[room.hostUid].filter(Boolean);
-
-  const votes=Array.isArray(room.votes)?room.votes:[];
-
-  if(room.status==="started"){
-   gameMode="MATCH";
-   screenMessage("MATCH STARTED!");
-   setStatus("EVERYONE VOTED — MATCH STARTED!");
-  }else if(room.status==="open"){
-   screenMessage("ROOM "+code+"  "+votes.length+"/"+players.length+" VOTES");
-
-   setStatus(
-    "ROOM "+code+" — "+
-    players.length+" PLAYER(S), "+
-    votes.length+" START VOTE(S)"
-   );
-  }else{
-   screenMessage("ROOM CLOSED");
-   setStatus("ROOM CLOSED");
+  status("COULD NOT CREATE ROOM");
+ }catch(e){status("ROOM ERROR: "+e.message);}
+}
+async function joinRoom(code){
+ await authReady;
+ const ref=doc(db,"rooms",code);
+ await runTransaction(db,async tx=>{
+  const snap=await tx.get(ref);
+  if(!snap.exists())throw Error("ROOM NOT FOUND");
+  const r=snap.data();
+  if(r.status!=="open")throw Error("ROOM ALREADY STARTED");
+  const players=Array.isArray(r.players)?r.players:[];
+  if(!players.includes(auth.currentUser.uid))players.push(auth.currentUser.uid);
+  if(players.length>10)throw Error("ROOM IS FULL");
+  tx.update(ref,{players});
+ });
+ roomCode=code;
+ openRoom(code);
+}
+async function joinPrivate(){
+ const code=prompt("Enter the 4-digit room code:");
+ if(!code)return;
+ try{await joinRoom(code.trim());}
+ catch(e){status(e.message);}
+}
+async function joinPublic(){
+ try{
+  await authReady;
+  status("FINDING PUBLIC PVP SERVER...");
+  const snap=await getDocs(collection(db,"rooms"));
+  const found=snap.docs.find(d=>{
+   const r=d.data();
+   return r.visibility==="public"&&r.status==="open"&&
+    r.gameType==="PVP"&&(r.players||[]).length<10;
+  });
+  if(found)await joinRoom(found.id);
+  else await createRoom("public","PVP");
+ }catch(e){status("PUBLIC SERVER ERROR: "+e.message);}
+}
+function openRoom(code){
+ if(roomStop)roomStop();
+ clearButtons();
+ mode="WAITING";
+ screenText("ROOM CODE: "+code);
+ addButton("START MATCH",1.35,startMatch);
+ addButton("LEAVE ROOM",1.0,leaveRoom);
+ const ref=doc(db,"rooms",code);
+ roomStop=onSnapshot(ref,s=>{
+  if(!s.exists()){status("ROOM CLOSED");return;}
+  const r=s.data();
+  if(r.status==="started")beginPvp();
+  else status("ROOM "+code+" — "+(r.players||[]).length+" PLAYER(S)");
+ });
+}
+async function startMatch(){
+ try{
+  const ref=doc(db,"rooms",roomCode);
+  await runTransaction(db,async tx=>{
+   const s=await tx.get(ref);
+   if(!s.exists())throw Error("ROOM NOT FOUND");
+   const r=s.data(),players=r.players||[],votes=r.votes||[];
+   if(!votes.includes(auth.currentUser.uid))votes.push(auth.currentUser.uid);
+   tx.update(ref,{votes,status:players.length>0&&players.every(p=>votes.includes(p))?"started":"open"});
+  });
+  status("VOTE SENT — WAITING FOR PLAYERS");
+ }catch(e){status("START ERROR: "+e.message);}
+}
+async function leaveRoom(){
+ if(roomStop){roomStop();roomStop=null;}
+ if(syncStop){syncStop();syncStop=null;}
+ const code=roomCode;roomCode="";
+ try{
+  if(code&&auth.currentUser){
+   const ref=doc(db,"rooms",code);
+   await runTransaction(db,async tx=>{
+    const s=await tx.get(ref);if(!s.exists())return;
+    const r=s.data();
+    const players=(r.players||[]).filter(p=>p!==auth.currentUser.uid);
+    const votes=(r.votes||[]).filter(p=>p!==auth.currentUser.uid);
+    tx.update(ref,{players,votes,status:players.length?"open":"closed",
+     hostUid:r.hostUid===auth.currentUser.uid?(players[0]||""):r.hostUid});
+   });
   }
-
- },error=>{
-  console.error("Room listener error:",error);
-  setStatus("ROOM UPDATE ERROR: "+(error.code||error.message));
+ }catch(e){console.warn(e);}
+ showMenu();
+}
+function beginPvp(){
+ if(mode==="PVP")return;
+ mode="PVP";
+ clearButtons();
+ screenText("PVP MATCH");
+ status("PVP MATCH — FIRE TO SHOOT");
+ const ref=doc(db,"rooms",roomCode);
+ if(syncStop)syncStop();
+ syncStop=onSnapshot(ref,s=>{
+  if(!s.exists())return;
+  const positions=s.data().positions||{};
+  remotePlayers=positions;
+  updateRemotePlayers();
  });
 }
 
-showMainMenu();
-computer.visible=false;
-
-// ===================================
-// SHELF
-// ===================================
-const shelf=new THREE.Group();
-shelf.position.set(-3.2,0,-4);
-scene.add(shelf);
-
-const shelfWidth=2.8;
-const shelfDepth=1.5;
-const shelfTop=1.0;
-
-solidBox(shelfWidth,.2,shelfDepth,0x55545d,0,.9,0,shelf);
-solidBox(shelfWidth+.06,.08,shelfDepth+.06,0xff1735,0,.78,0,shelf);
-
-solidBox(.18,.8,.18,0x292b33,-1.2,.4,-.6,shelf);
-solidBox(.18,.8,.18,0x292b33,1.2,.4,-.6,shelf);
-solidBox(.18,.8,.18,0x292b33,-1.2,.4,.6,shelf);
-solidBox(.18,.8,.18,0x292b33,1.2,.4,.6,shelf);
-
-// ===================================
-// REDLINE GORILLA BODY
-// ===================================
-const bodyMaterial=new THREE.MeshStandardMaterial({
- color:0x08090c,
- roughness:.82
+/* PLAYER AVATAR */
+const black=new THREE.MeshStandardMaterial({color:0x08090c});
+const lava=new THREE.MeshStandardMaterial({
+ color:0xff102c,emissive:0xff001b,emissiveIntensity:1.3
 });
-
-const faceMaterial=new THREE.MeshStandardMaterial({
- color:0x090a0d,
- roughness:.9
-});
-
-const chestMaterial=new THREE.MeshStandardMaterial({
- color:0x111216,
- roughness:.85
-});
-
-const lavaMaterial=new THREE.MeshStandardMaterial({
- color:0xff102c,
- emissive:0xff001b,
- emissiveIntensity:1.35,
- roughness:.4
-});
-
-const darkEyeMaterial=new THREE.MeshStandardMaterial({
- color:0x050505,
- roughness:.3
-});
-
-const torso=new THREE.Mesh(
- new THREE.SphereGeometry(.28,24,20),
- bodyMaterial
-);
-
-torso.scale.set(.86,.72,.68);
-torso.castShadow=true;
-scene.add(torso);
-
-const head=new THREE.Mesh(
- new THREE.SphereGeometry(.17,24,20),
- bodyMaterial
-);
-
-head.castShadow=true;
+const torso=new THREE.Mesh(new THREE.SphereGeometry(.28,20,16),black);
+torso.scale.set(.86,.72,.68);scene.add(torso);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.17,20,16),black);
 scene.add(head);
-
-const face=new THREE.Mesh(
- new THREE.SphereGeometry(.115,20,16),
- faceMaterial
-);
-
-face.scale.set(1.05,.9,.4);
-scene.add(face);
-
-for(let i=0;i<2;i++){
- const eye=new THREE.Mesh(
-  new THREE.SphereGeometry(.025,16,12),
-  darkEyeMaterial
- );
-
- eye.position.set(i===0?-.04:.04,.015,-.045);
- face.add(eye);
-}
-
-const chest=new THREE.Mesh(
- new THREE.SphereGeometry(.13,20,16),
- chestMaterial
-);
-
-chest.scale.set(1,1,.18);
-scene.add(chest);
-
-const chestLava=[];
-
-for(let i=0;i<2;i++){
- const line=new THREE.Mesh(
-  new THREE.BoxGeometry(.015,.11,.015),
-  lavaMaterial
- );
-
- line.rotation.z=i===0?-.35:.35;
- scene.add(line);
- chestLava.push(line);
-}
-
-// ===================================
-// ARMS AND HANDS
-// ===================================
 const arms=[];
-
-function makeArm(){
- const arm=new THREE.Mesh(
-  new THREE.CylinderGeometry(.085,.105,1,16),
-  bodyMaterial
- );
-
- const hand=new THREE.Mesh(
-  new THREE.SphereGeometry(.09,16,12),
-  bodyMaterial
- );
-
- const bands=[];
-
- for(let i=0;i<2;i++){
-  const band=new THREE.Mesh(
-   new THREE.TorusGeometry(.095,.012,8,24),
-   lavaMaterial
-  );
-
-  band.rotation.x=Math.PI/2;
-  scene.add(band);
-  bands.push(band);
- }
-
- scene.add(arm);
- scene.add(hand);
-
- return {arm,hand,bands};
-}
-
-arms.push(makeArm());
-arms.push(makeArm());
-
-function setArmVisible(arm,visible){
- arm.arm.visible=visible;
- arm.hand.visible=visible;
-
- for(const band of arm.bands){
-  band.visible=visible;
- }
-}
-
-function updateSegment(mesh,start,end){
- const direction=new THREE.Vector3().subVectors(end,start);
- const length=direction.length();
-
- mesh.position.copy(start).add(end).multiplyScalar(.5);
- mesh.scale.y=length;
-
- mesh.quaternion.setFromUnitVectors(
-  new THREE.Vector3(0,1,0),
-  direction.normalize()
- );
-}
-
-arms.forEach(arm=>setArmVisible(arm,false));
-
-// ===================================
-// VR CONTROLLERS
-// ===================================
-const controllers=[];
-
 for(let i=0;i<2;i++){
- const controller=renderer.xr.getController(i);
-
- controller.userData.connected=false;
- controller.userData.handedness=i===0?"left":"right";
-
- controller.addEventListener("connected",event=>{
-  const hand=event.data?.handedness;
-
-  controller.userData.connected=true;
-
-  if(hand==="left"||hand==="right"){
-   controller.userData.handedness=hand;
-  }
-
-  const index=controller.userData.handedness==="left"?0:1;
-
-  setArmVisible(arms[index],true);
-
-  setStatus(
-   (hand||controller.userData.handedness).toUpperCase()+
-   " CONTROLLER CONNECTED"
-  );
- });
-
- controller.addEventListener("disconnected",()=>{
-  controller.userData.connected=false;
-
-  const index=controller.userData.handedness==="left"?0:1;
-
-  setArmVisible(arms[index],false);
-
-  setStatus(
-   controller.userData.handedness.toUpperCase()+
-   " CONTROLLER DISCONNECTED"
-  );
- });
-
- playerRig.add(controller);
-
- const laser=new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints([
-   new THREE.Vector3(0,0,0),
-   new THREE.Vector3(0,0,-4)
-  ]),
-  new THREE.LineBasicMaterial({color:0xff263f})
- );
-
- controller.add(laser);
-
- controller.addEventListener("select",()=>{
-  checkController(controller);
- });
-
- controllers.push(controller);
+ const arm=new THREE.Mesh(new THREE.CylinderGeometry(.08,.1,1,12),black);
+ const hand=new THREE.Mesh(new THREE.SphereGeometry(.09,12,10),black);
+ const band=new THREE.Mesh(new THREE.TorusGeometry(.095,.012,8,20),lava);
+ scene.add(arm,hand,band);
+ arms.push({arm,hand,band});
+}
+function segment(mesh,a,b){
+ const d=new THREE.Vector3().subVectors(b,a);
+ mesh.position.copy(a).add(b).multiplyScalar(.5);
+ mesh.scale.y=d.length();
+ mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
 }
 
-// ===================================
-// COMPUTER INTERACTION
-// ===================================
-const raycaster=new THREE.Raycaster();
-const headPosition=new THREE.Vector3();
-const deskPosition=new THREE.Vector3();
-const handPosition=new THREE.Vector3();
-const shoulder=new THREE.Vector3();
-
-function computerDistance(){
- const view=renderer.xr.isPresenting
-  ?renderer.xr.getCamera(camera)
-  :camera;
-
- view.getWorldPosition(headPosition);
-
- deskPosition.set(0,1.6,-7);
-
- return headPosition.distanceTo(deskPosition);
+/* BOSS BATTLE */
+let boss=null,bossHP=0,bossMax=0,bossRewarded=false;
+function startBoss(){
+ clearButtons();
+ mode="BOSS";
+ bossHP=500;bossMax=500;bossRewarded=false;
+ screenText("BOSS BATTLE");
+ status("BOSS BATTLE — DEFEAT THE BOSS!");
+ if(boss)scene.remove(boss);
+ boss=new THREE.Group();
+ boss.position.set(0,1,-7);
+ scene.add(boss);
+ const bossMat=new THREE.MeshStandardMaterial({color:0x300710,emissive:0x8b0018,emissiveIntensity:.7});
+ const body=new THREE.Mesh(new THREE.SphereGeometry(.8,24,20),bossMat);
+ body.scale.y=1.3;boss.add(body);
+ const bossHead=new THREE.Mesh(new THREE.SphereGeometry(.48,20,16),bossMat);
+ bossHead.position.y=1.1;boss.add(bossHead);
+ for(let i=0;i<2;i++){
+  const eye=new THREE.Mesh(new THREE.SphereGeometry(.08,12,12),lava);
+  eye.position.set(i? .2:-.2,1.15,-.42);boss.add(eye);
+ }
 }
-
-function checkController(controller){
- if(!renderer.xr.isPresenting)return;
- if(computerDistance()>3.5)return;
-
- const origin=new THREE.Vector3();
- const direction=new THREE.Vector3();
- const rotation=new THREE.Quaternion();
-
- controller.getWorldPosition(origin);
- controller.getWorldQuaternion(rotation);
-
- direction.set(0,0,-1).applyQuaternion(rotation);
-
- raycaster.set(origin,direction);
- raycaster.far=5;
-
- const hits=raycaster.intersectObjects(menuButtons,false);
-
- if(hits.length&&hits[0].object.userData.action){
-  hits[0].object.userData.action();
+function damageBoss(){
+ if(mode!=="BOSS"||!boss||bossHP<=0)return;
+ bossHP=Math.max(0,bossHP-25);
+ status("BOSS HEALTH: "+bossHP+"/"+bossMax);
+ if(bossHP===0&&!bossRewarded){
+  bossRewarded=true;
+  earnMoney(5000);
+  screenText("BOSS DEFEATED!");
+  status("BOSS DEFEATED! YOU EARNED $5,000!");
+  scene.remove(boss);boss=null;
  }
 }
 
-// ===================================
-// HEIGHT CALIBRATION
-// ===================================
-let calibrated=false;
-let playerHeight=1.6;
-let calibrationAttempts=0;
-
-function calibrateHeight(){
- if(calibrated||!renderer.xr.isPresenting)return;
-
- const view=renderer.xr.getCamera(camera);
- view.getWorldPosition(headPosition);
-
- const measuredHeight=headPosition.y-playerRig.position.y;
-
- if(measuredHeight>.5&&measuredHeight<3){
-  playerHeight=THREE.MathUtils.clamp(measuredHeight,1,2.3);
-  calibrated=true;
-
-  setStatus(
-   "VR READY — HEIGHT SET: "+
-   playerHeight.toFixed(2)+" METERS"
-  );
-
+/* SHOOTING */
+const ray=new THREE.Raycaster();
+function shoot(){
+ if(mode==="BOSS"){
+  damageBoss();
   return;
  }
+ if(mode!=="PVP")return;
+ status("PVP SHOT FIRED");
+ /* Prototype shot: online hit validation is not authoritative. */
+}
+document.getElementById("fire").addEventListener("pointerdown",e=>{
+ e.preventDefault();shoot();
+});
 
- calibrationAttempts++;
-
- if(calibrationAttempts>120){
-  playerHeight=1.6;
-  calibrated=true;
-  setStatus("VR READY — DEFAULT HEIGHT SET");
- }
+/* VR */
+const controllers=[];
+for(let i=0;i<2;i++){
+ const c=renderer.xr.getController(i);
+ c.addEventListener("select",shoot);
+ rig.add(c);controllers.push(c);
+}
+document.getElementById("enterVR").onclick=async()=>{
+ try{
+  const session=await navigator.xr.requestSession("immersive-vr",{optionalFeatures:["local-floor","hand-tracking"]});
+  renderer.xr.setReferenceSpaceType("local-floor");
+  await renderer.xr.setSession(session);
+  computer.visible=true;
+  showMenu();
+  document.getElementById("enter").style.display="none";
+  document.getElementById("enterVR").style.display="none";
+  document.getElementById("hud").style.display="block";
+  session.addEventListener("end",()=>{
+   document.getElementById("enter").style.display="block";
+   document.getElementById("enterVR").style.display="block";
+   document.getElementById("hud").style.display="none";
+   computer.visible=false;
+  });
+ }catch(e){status("VR ERROR: "+e.message);}
+};
+if(navigator.xr){
+ navigator.xr.isSessionSupported("immersive-vr").then(ok=>{
+  if(ok)document.getElementById("enterVR").style.display="block";
+ }).catch(()=>{});
 }
 
-// ===================================
-// GAME START — MOBILE OR VR
-// ===================================
-function startMobileGame(){
- mobileMode=true;
-
- mobileYaw=0;
- mobilePitch=0;
-
- playerRig.position.set(0,0,-4.4);
- playerRig.rotation.set(0,0,0);
-
- camera.position.set(0,1.6,2);
- camera.rotation.set(0,0,0);
-
- computer.visible=true;
- showMainMenu();
-
+/* MOBILE GAME */
+let mobile=false,yaw=0,pitch=0;
+document.getElementById("enter").onclick=()=>{
+ mobile=true;rig.position.set(0,0,-4.4);
+ computer.visible=true;showMenu();
  document.getElementById("enter").style.display="none";
  document.getElementById("enterVR").style.display="none";
- document.getElementById("mobileControls").style.display="block";
+ document.getElementById("controls").style.display="block";
+ document.getElementById("hud").style.display="block";
+ status("REDLINE ARENA — MOBILE READY");
+};
 
- setStatus("REDLINE ARENA — MOBILE GAME READY");
-}
-
-document.getElementById("enter").addEventListener(
- "click",
- startMobileGame
-);
-
-document.getElementById("enterVR").addEventListener(
- "click",
- async()=>{
-  try{
-   if(!navigator.xr){
-    setStatus("VR IS NOT AVAILABLE IN THIS BROWSER");
-    return;
-   }
-
-   const supported=await navigator.xr.isSessionSupported("immersive-vr");
-
-   if(!supported){
-    setStatus("VR NOT SUPPORTED — TAP ENTER GAME");
-    return;
-   }
-
-   const session=await navigator.xr.requestSession("immersive-vr",{
-    requiredFeatures:["local-floor"],
-    optionalFeatures:["hand-tracking"]
-   });
-
-   renderer.xr.setReferenceSpaceType("local-floor");
-   await renderer.xr.setSession(session);
-
-   mobileMode=false;
-   playerRig.position.set(0,0,0);
-
-   computer.visible=true;
-   showMainMenu();
-
-   calibrated=false;
-   playerHeight=1.6;
-   calibrationAttempts=0;
-
-   document.getElementById("enter").style.display="none";
-   document.getElementById("enterVR").style.display="none";
-   document.getElementById("mobileControls").style.display="none";
-
-   setStatus("REDLINE ARENA — ENTERING VR");
-
-   session.addEventListener("end",()=>{
-    stopRoomListener();
-
-    computer.visible=false;
-    mobileMode=false;
-
-    document.getElementById("enter").style.display="block";
-    document.getElementById("enterVR").style.display="block";
-    document.getElementById("mobileControls").style.display="none";
-
-    controllers.forEach(controller=>{
-     controller.userData.connected=false;
-    });
-
-    arms.forEach(arm=>setArmVisible(arm,false));
-
-    setStatus("REDLINE ARENA — READY");
-   });
-
-  }catch(error){
-   console.error("VR error:",error);
-   setStatus("VR ERROR: "+error.message);
-  }
- }
-);
-
-if(navigator.xr){
- navigator.xr.isSessionSupported("immersive-vr")
- .then(supported=>{
-  if(supported){
-   document.getElementById("enterVR").style.display="block";
-  }
- })
- .catch(()=>{});
-}
-
-// ===================================
-// MOBILE TOUCH CONTROLS
-// ===================================
-const stickBase=document.getElementById("stickBase");
-const stickKnob=document.getElementById("stickKnob");
-
-let stickPointer=null;
-
-function setStick(event){
- const rect=stickBase.getBoundingClientRect();
-
- const cx=rect.left+rect.width/2;
- const cy=rect.top+rect.height/2;
-
- let dx=event.clientX-cx;
- let dy=event.clientY-cy;
-
- const max=43;
- const len=Math.hypot(dx,dy);
-
- if(len>max){
-  dx=dx/len*max;
-  dy=dy/len*max;
- }
-
- mobileStickX=dx/max;
- mobileStickY=dy/max;
-
- stickKnob.style.transform=`translate(${dx}px,${dy}px)`;
-}
-
-function resetStick(){
- mobileStickX=0;
- mobileStickY=0;
-
- stickKnob.style.transform="translate(0,0)";
- stickPointer=null;
-}
-
-stickBase.addEventListener("pointerdown",event=>{
- stickPointer=event.pointerId;
- stickBase.setPointerCapture(stickPointer);
- setStick(event);
+/* COMPUTER BUTTON TOUCH + VR LASER */
+const raycaster=new THREE.Raycaster();
+renderer.domElement.addEventListener("click",e=>{
+ if(!mobile||!computer.visible)return;
+ const r=renderer.domElement.getBoundingClientRect();
+ const p=new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+ raycaster.setFromCamera(p,camera);
+ const hits=raycaster.intersectObjects(buttons);
+ if(hits.length)hits[0].object.userData.action?.();
 });
-
-stickBase.addEventListener("pointermove",event=>{
- if(event.pointerId===stickPointer){
-  setStick(event);
- }
-});
-
-stickBase.addEventListener("pointerup",resetStick);
-stickBase.addEventListener("pointercancel",resetStick);
-
-const jumpButton=document.getElementById("jump");
-
-jumpButton.addEventListener("pointerdown",event=>{
- event.preventDefault();
-
- mobileJumpDown=true;
- jumpButton.setPointerCapture(event.pointerId);
-});
-
-function releaseJump(){
- mobileJumpDown=false;
-}
-
-jumpButton.addEventListener("pointerup",releaseJump);
-jumpButton.addEventListener("pointercancel",releaseJump);
-jumpButton.addEventListener("lostpointercapture",releaseJump);
-
-let lookPointer=null;
-let lastLookX=0;
-let lastLookY=0;
-
-renderer.domElement.addEventListener("pointerdown",event=>{
- if(!mobileMode||event.clientX<innerWidth*.42)return;
-
- lookPointer=event.pointerId;
- lastLookX=event.clientX;
- lastLookY=event.clientY;
-
- renderer.domElement.setPointerCapture(lookPointer);
-});
-
-renderer.domElement.addEventListener("pointermove",event=>{
- if(!mobileMode||event.pointerId!==lookPointer)return;
-
- const dx=event.clientX-lastLookX;
- const dy=event.clientY-lastLookY;
-
- lastLookX=event.clientX;
- lastLookY=event.clientY;
-
- mobileYaw-=dx*.004;
- mobilePitch-=dy*.003;
-
- mobilePitch=THREE.MathUtils.clamp(
-  mobilePitch,-1.15,1.15
- );
-
- playerRig.rotation.y=mobileYaw;
- camera.rotation.x=mobilePitch;
-});
-
-function endLook(event){
- if(event.pointerId===lookPointer){
-  lookPointer=null;
+function updateRemotePlayers(){
+ /* Display remote players from the room's shared position list. */
+ for(const [uid,pos] of Object.entries(remotePlayers)){
+  if(uid===auth.currentUser?.uid)continue;
+  if(!pos||!Array.isArray(pos))continue;
  }
 }
 
-renderer.domElement.addEventListener("pointerup",endLook);
-renderer.domElement.addEventListener("pointercancel",endLook);
-
-renderer.domElement.addEventListener("click",event=>{
- if(!mobileMode||!computer.visible)return;
-
- const rect=renderer.domElement.getBoundingClientRect();
-
- const pointer=new THREE.Vector2(
-  ((event.clientX-rect.left)/rect.width)*2-1,
-  -((event.clientY-rect.top)/rect.height)*2+1
- );
-
- raycaster.setFromCamera(pointer,camera);
-
- const hits=raycaster.intersectObjects(menuButtons,false);
-
- if(hits.length&&hits[0].object.userData.action){
-  hits[0].object.userData.action();
- }
-});
-
-window.addEventListener("keydown",event=>{
- mobileKeys[event.key.toLowerCase()]=true;
-});
-
-window.addEventListener("keyup",event=>{
- mobileKeys[event.key.toLowerCase()]=false;
-});
-
-// ===================================
-// WALKING, JUMPING AND COLLISION
-// ===================================
-let verticalVelocity=0;
-let grounded=true;
-let jumpWasDown=false;
-
-const gravity=9.8;
-const jumpPower=4.2;
-const walkSpeed=2.8;
-
-function isOnShelf(x,z){
- const localX=x-shelf.position.x;
- const localZ=z-shelf.position.z;
-
- return Math.abs(localX)<shelfWidth/2&&
-  Math.abs(localZ)<shelfDepth/2;
+/* MOBILE JOYSTICK */
+const stick=document.getElementById("stick"),knob=document.getElementById("knob");
+let sx=0,sy=0,pointer=null;
+function moveStick(e){
+ const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+ let x=e.clientX-cx,y=e.clientY-cy,l=Math.hypot(x,y),max=42;
+ if(l>max){x=x/l*max;y=y/l*max;}
+ sx=x/max;sy=y/max;knob.style.transform=`translate(${x}px,${y}px)`;
 }
+stick.onpointerdown=e=>{pointer=e.pointerId;stick.setPointerCapture(pointer);moveStick(e);};
+stick.onpointermove=e=>{if(e.pointerId===pointer)moveStick(e);};
+function resetStick(){sx=0;sy=0;pointer=null;knob.style.transform="translate(0,0)";}
+stick.onpointerup=resetStick;stick.onpointercancel=resetStick;
 
-function movePlayer(delta){
- if(!renderer.xr.isPresenting&&!mobileMode)return;
+let jump=false,vy=0,grounded=true;
+document.getElementById("jump").onpointerdown=e=>{e.preventDefault();jump=true;};
+document.getElementById("jump").onpointerup=()=>jump=false;
+document.getElementById("jump").onpointercancel=()=>jump=false;
+let lookId=null,lx=0,ly=0;
+renderer.domElement.addEventListener("pointerdown",e=>{
+ if(!mobile||e.clientX<innerWidth*.42)return;
+ lookId=e.pointerId;lx=e.clientX;ly=e.clientY;
+ renderer.domElement.setPointerCapture(lookId);
+});
+renderer.domElement.addEventListener("pointermove",e=>{
+ if(e.pointerId!==lookId)return;
+ yaw-=(e.clientX-lx)*.004;
+ pitch-=(e.clientY-ly)*.003;
+ pitch=THREE.MathUtils.clamp(pitch,-1.1,1.1);
+ lx=e.clientX;ly=e.clientY;
+ rig.rotation.y=yaw;camera.rotation.x=pitch;
+});
+renderer.domElement.addEventListener("pointerup",()=>lookId=null);
+renderer.domElement.addEventListener("pointercancel",()=>lookId=null);
 
- let stickX=mobileMode?mobileStickX:0;
- let stickY=mobileMode?mobileStickY:0;
- let jumpDown=mobileMode?mobileJumpDown:false;
-
- const session=renderer.xr.getSession();
-
- if(renderer.xr.isPresenting&&session){
-  for(const source of session.inputSources){
-   if(!source.gamepad)continue;
-
-   if(source.handedness==="left"){
-    const axes=source.gamepad.axes;
-
-    if(axes.length>=2){
-     stickX=axes[axes.length-2]||0;
-     stickY=axes[axes.length-1]||0;
-    }
-   }
-
-   if(source.handedness==="right"){
-    const buttons=source.gamepad.buttons;
-
-    jumpDown=!!(
-     (buttons[4]&&buttons[4].pressed)||
-     (buttons[3]&&buttons[3].pressed)
-    );
-   }
-  }
- }
-
- if(mobileMode){
-  if(mobileKeys["w"]||mobileKeys["arrowup"])stickY=-1;
-  if(mobileKeys["s"]||mobileKeys["arrowdown"])stickY=1;
-  if(mobileKeys["a"]||mobileKeys["arrowleft"])stickX=-1;
-  if(mobileKeys["d"]||mobileKeys["arrowright"])stickX=1;
-  if(mobileKeys[" "])jumpDown=true;
- }
-
- if(Math.abs(stickX)>.15||Math.abs(stickY)>.15){
-  const view=renderer.xr.isPresenting
-   ?renderer.xr.getCamera(camera)
-   :camera;
-
-  const forward=new THREE.Vector3();
-
-  view.getWorldDirection(forward);
-  forward.y=0;
-  forward.normalize();
-
-  const right=new THREE.Vector3().crossVectors(
-   forward,
-   new THREE.Vector3(0,1,0)
-  ).normalize();
-
-  playerRig.position.addScaledVector(
-   forward,-stickY*walkSpeed*delta
-  );
-
-  playerRig.position.addScaledVector(
-   right,stickX*walkSpeed*delta
-  );
- }
-
- if(jumpDown&&!jumpWasDown&&grounded){
-  verticalVelocity=jumpPower;
-  grounded=false;
- }
-
- jumpWasDown=jumpDown;
-
- const oldFeetY=playerRig.position.y;
-
- verticalVelocity-=gravity*delta;
- playerRig.position.y+=verticalVelocity*delta;
-
- const view=renderer.xr.isPresenting
-  ?renderer.xr.getCamera(camera)
-  :camera;
-
- view.getWorldPosition(headPosition);
-
- const shelfBounds=isOnShelf(
-  headPosition.x,
-  headPosition.z
- );
-
- if(
-  shelfBounds&&
-  oldFeetY>=shelfTop-.02&&
-  playerRig.position.y<=shelfTop&&
-  verticalVelocity<=0
- ){
-  playerRig.position.y=shelfTop;
-  verticalVelocity=0;
-  grounded=true;
- }
-
- if(playerRig.position.y<=0){
-  playerRig.position.y=0;
-  verticalVelocity=0;
-  grounded=true;
- }
-
- if(
-  shelfBounds&&
-  Math.abs(playerRig.position.y-shelfTop)<.02&&
-  verticalVelocity<=0
- ){
-  playerRig.position.y=shelfTop;
-  verticalVelocity=0;
-  grounded=true;
- }
-}
-
-// ===================================
-// BODY AND ARM TRACKING
-// ===================================
-function updateBody(){
- if(!renderer.xr.isPresenting&&!mobileMode)return;
-
- const view=renderer.xr.isPresenting
-  ?renderer.xr.getCamera(camera)
-  :camera;
-
- view.getWorldPosition(headPosition);
-
- torso.position.copy(headPosition);
- torso.position.y-=playerHeight*.40;
-
- torso.scale.set(
-  .86,
-  .72*(playerHeight/1.6),
-  .68
- );
-
- head.position.copy(headPosition);
- head.position.y-=.13;
-
- face.position.copy(head.position);
- face.position.y+=.005;
- face.position.z-=.095;
-
- chest.position.copy(torso.position);
- chest.position.z-=.18;
-
- chestLava[0].position.set(
-  torso.position.x-.035,
-  torso.position.y+.01,
-  torso.position.z-.205
- );
-
- chestLava[1].position.set(
-  torso.position.x+.035,
-  torso.position.y-.01,
-  torso.position.z-.205
- );
-
- if(!renderer.xr.isPresenting){
-  arms.forEach(arm=>setArmVisible(arm,false));
-  return;
- }
-
+/* PLAYER MOVEMENT */
+const clock=new THREE.Clock();
+let previousSync=0;
+function updatePlayer(dt){
+ if(!mobile&&!renderer.xr.isPresenting)return;
+ const forward=new THREE.Vector3();
+ camera.getWorldDirection(forward);forward.y=0;forward.normalize();
+ const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
+ rig.position.addScaledVector(forward,-sy*2.8*dt);
+ rig.position.addScaledVector(right,sx*2.8*dt);
+ if(jump&&grounded){vy=4.2;grounded=false;}
+ vy-=9.8*dt;rig.position.y+=vy*dt;
+ if(rig.position.y<=0){rig.position.y=0;vy=0;grounded=true;}
+ camera.getWorldPosition(head.position);
+ torso.position.copy(head.position);torso.position.y-=.65;
  for(let i=0;i<2;i++){
-  const controller=controllers[i];
-  const arm=arms[i];
-
-  if(!controller.userData.connected){
-   setArmVisible(arm,false);
-   continue;
-  }
-
-  setArmVisible(arm,true);
-
-  controller.getWorldPosition(handPosition);
-
-  shoulder.copy(headPosition);
-
-  shoulder.x+=(
-   controller.userData.handedness==="left"?-.19:.19
-  );
-
-  shoulder.y-=playerHeight*.22;
-  shoulder.z+=.035;
-
-  updateSegment(arm.arm,shoulder,handPosition);
-  arm.hand.position.copy(handPosition);
-
-  const direction=new THREE.Vector3().subVectors(
-   handPosition,shoulder
-  );
-
-  const length=direction.length();
-  direction.normalize();
-
-  for(let b=0;b<arm.bands.length;b++){
-   const fraction=b===0?.32:.7;
-
-   arm.bands[b].position.copy(shoulder)
-    .addScaledVector(direction,length*fraction);
-
-   arm.bands[b].quaternion.copy(arm.arm.quaternion);
-   arm.bands[b].rotateX(Math.PI/2);
-  }
+  const side=i===0?-1:1;
+  const shoulder=new THREE.Vector3(head.position.x+side*.2,head.position.y-.35,head.position.z);
+  const hand=new THREE.Vector3(head.position.x+side*.5,head.position.y-.7,head.position.z-.3);
+  segment(arms[i].arm,shoulder,hand);
+  arms[i].hand.position.copy(hand);
+  arms[i].band.position.copy(shoulder).lerp(hand,.7);
  }
 }
 
-// ===================================
-// MAIN GAME LOOP
-// ===================================
-let lastTime=performance.now();
-let nearComputer=false;
+/* BASIC PVP POSITION UPDATES */
+async function syncPosition(){
+ if(mode!=="PVP"||!roomCode||!auth.currentUser)return;
+ const now=performance.now();
+ if(now-previousSync<500)return;
+ previousSync=now;
+ try{
+  const ref=doc(db,"rooms",roomCode);
+  const positions={...remotePlayers};
+  positions[auth.currentUser.uid]=[
+   Number(rig.position.x.toFixed(2)),
+   Number(rig.position.y.toFixed(2)),
+   Number(rig.position.z.toFixed(2))
+  ];
+  await updateDoc(ref,{positions});
+ }catch(e){console.warn("Position sync:",e.message);}
+}
 
 renderer.setAnimationLoop(()=>{
- const now=performance.now();
- const delta=Math.min((now-lastTime)/1000,.05);
-
- lastTime=now;
-
- if(renderer.xr.isPresenting||mobileMode){
-  if(renderer.xr.isPresenting&&!calibrated){
-   calibrateHeight();
-  }
-
-  movePlayer(delta);
-  updateBody();
-
-  if(computer.visible){
-   const near=computerDistance()<3.5;
-
-   if(near&&!nearComputer){
-    setStatus(
-     mobileMode
-      ?"TAP A COMPUTER BUTTON TO SELECT"
-      :"COMPUTER READY — AIM AND PRESS TRIGGER"
-    );
-   }
-
-   if(!near&&nearComputer){
-    setStatus("WALK TO THE COMPUTER");
-   }
-
-   nearComputer=near;
-  }
+ const dt=Math.min(clock.getDelta(),.05);
+ if(mobile||renderer.xr.isPresenting){
+  updatePlayer(dt);
+  syncPosition();
  }
-
+ if(boss){
+  boss.rotation.y+=dt*.25;
+ }
  renderer.render(scene,camera);
 });
-
-// ===================================
-// RESIZE AND FIREBASE ERROR CHECK
-// ===================================
 window.addEventListener("resize",()=>{
  camera.aspect=innerWidth/innerHeight;
  camera.updateProjectionMatrix();
  renderer.setSize(innerWidth,innerHeight);
 });
-
-authReady.catch(error=>{
- console.error("Firebase is not ready:",error);
-});
-
 </script>
 </body>
 </html>
