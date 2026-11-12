@@ -1133,30 +1133,41 @@ function buyWeapon(name){
  showZombieShop();
 }
 
+/* UPDATED WEAPON SHOP — ALL BUTTONS FIT ON THE COMPUTER */
 function showZombieShop(){
  if(!["ZOMBIE","ZOMBIE_FRIENDS","ZOMBIE_LOST"].includes(mode))return;
+
  document.getElementById("crosshair").style.display="none";
- clearButtons();screenText("WEAPON SHOP");
+ clearButtons();
+ screenText("WEAPON SHOP");
 
  const rows=[
-  ["PISTOL",1.65],["SHOTGUN",1.35],["RAPID BLASTER",1.05],
-  ["ASSAULT RIFLE",.75],["SNIPER RIFLE",.45],["MINIGUN",.15]
+  ["PISTOL",1.65],
+  ["SHOTGUN",1.40],
+  ["RAPID BLASTER",1.15],
+  ["ASSAULT RIFLE",.90],
+  ["SNIPER RIFLE",.65],
+  ["MINIGUN",.40]
  ];
 
  for(const [name,y] of rows){
   const w=weaponList.find(v=>v.name===name);
   const owned=unlockedWeapons.includes(name);
+
   const label=owned?
    (equippedWeapon===name?name+" — EQUIPPED":name+" — EQUIP"):
    name+" — $"+w.price.toLocaleString();
+
   addButton(label,y,()=>buyWeapon(name));
  }
 
- addButton("BASE DEFENSES",-.2,showBaseShop);
- addButton("BACK TO SURVIVAL",-.55,()=>{
+ addButton("BASE DEFENSES",.15,showBaseShop);
+
+ addButton("BACK TO SURVIVAL",-.10,()=>{
   showZombieHQMenu();
   status("KEEP FIGHTING!");
  });
+
  updateHUD();
 }
 
