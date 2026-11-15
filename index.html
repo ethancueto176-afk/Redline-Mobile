@@ -27,6 +27,13 @@ button{cursor:pointer}
 #crosshair:after{height:2px;width:34px;top:16px}
 #crosshair .ring{position:absolute;inset:7px;border:2px solid #ff263f;border-radius:50%;background:#08080855}
 #crosshair .dot{position:absolute;width:4px;height:4px;left:15px;top:15px;border-radius:50%;background:#fff}
+#accountGate{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;background:#080808;padding:20px;text-align:center}
+#accountGate h1{color:#ff263f;text-shadow:0 0 18px #ff1735;margin:0}
+#accountGate p{margin:4px 0;color:#ddd;font-weight:bold}
+#accountGate button{width:min(320px,90vw);padding:16px;border:2px solid white;border-radius:10px;background:#a80e28;color:white;font-weight:bold;font-size:16px}
+#accountGate button:disabled{opacity:.55;cursor:wait}
+#accountGate input{width:180px;padding:14px;font-size:26px;text-align:center;letter-spacing:10px;background:#171923;color:white;border:2px solid #ff263f;border-radius:8px}
+#loginMessage{color:#ff687d;min-height:20px;max-width:320px}
 </style>
 </head>
 <body>
@@ -45,6 +52,19 @@ button{cursor:pointer}
 </div>
 <div id="status">REDLINE ARENA — READY</div>
 <div id="crosshair"><div class="ring"></div><div class="dot"></div></div>
+<div id="accountGate">
+ <h1>REDLINE ARENA</h1>
+ <p>CHOOSE YOUR ACCOUNT</p>
+ <button id="ownerLogin">SIGN IN AS OWNER</button>
+ <button id="playerLogin">SIGN IN AS REGULAR PLAYER</button>
+ <div id="ownerPinBox" style="display:none">
+  <p>ENTER YOUR 4-DIGIT OWNER PIN</p>
+  <input id="ownerPin" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="off" placeholder="••••">
+  <button id="submitOwnerPin">UNLOCK OWNER MODE</button>
+  <button id="cancelOwnerPin">BACK</button>
+ </div>
+ <p id="loginMessage" aria-live="polite"></p>
+</div>
 
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
@@ -56,6 +76,7 @@ import {
 import {
  getAuth,signInAnonymously,setPersistence,browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/13.2.0/firebase-functions.js";
 
 /* FIREBASE — CONFIGURATION PRESERVED */
 const firebaseConfig={
@@ -68,6 +89,8 @@ const firebaseConfig={
  measurementId:"G-CXG70DQ206"
 };
 const app=initializeApp(firebaseConfig),db=getFirestore(app),auth=getAuth(app);
+const functions=getFunctions(app);
+const verifyOwnerPin=httpsCallable(functions,"verifyOwnerPin");
 let ready=false,profileSaveQueue=Promise.resolve();
 function status(s){document.getElementById("status").textContent=s;}
 
@@ -75,6 +98,62 @@ const authReady=setPersistence(auth,browserLocalPersistence)
  .then(()=>signInAnonymously(auth))
  .then(async()=>{ready=true;await loadPlayerProfile();status("PLAYER RECOGNIZED — PROFILE LOADED");})
  .catch(e=>{status("FIREBASE ERROR: "+e.message);console.error(e);});
+
+/* ACCOUNT GATE — OWNER ACCESS IS VERIFIED BY A CLOUD FUNCTION EACH LAUNCH */
+let accountMode="NONE",ownerSession=false,ownerGodMode=false;
+const accountGate=document.getElementById("accountGate");
+const ownerPinBox=document.getElementById("ownerPinBox");
+const ownerPinInput=document.getElementById("ownerPin");
+const loginMessage=document.getElementById("loginMessage");
+
+document.getElementById("ownerLogin").onclick=()=>{
+ ownerPinBox.style.display="block";
+ ownerPinInput.value="";
+ loginMessage.textContent="";
+ ownerPinInput.focus();
+};
+document.getElementById("cancelOwnerPin").onclick=()=>{
+ ownerPinBox.style.display="none";
+ ownerPinInput.value="";
+ loginMessage.textContent="";
+};
+document.getElementById("playerLogin").onclick=async()=>{
+ try{
+  await authReady;
+  if(!auth.currentUser)throw Error("FIREBASE SIGN-IN FAILED");
+  accountMode="PLAYER";ownerSession=false;ownerGodMode=false;
+  accountGate.style.display="none";
+  status("REGULAR PLAYER — CHOOSE ENTER GAME OR ENTER VR");
+ }catch(e){loginMessage.textContent=e.message||"SIGN-IN FAILED";}
+};
+document.getElementById("submitOwnerPin").onclick=async()=>{
+ const pin=ownerPinInput.value.trim();
+ if(!/^[0-9]{4}$/.test(pin)){
+  loginMessage.textContent="ENTER EXACTLY FOUR DIGITS";
+  return;
+ }
+ const submit=document.getElementById("submitOwnerPin");
+ submit.disabled=true;
+ loginMessage.textContent="VERIFYING OWNER PIN...";
+ try{
+  await authReady;
+  if(!auth.currentUser)throw Error("FIREBASE SIGN-IN FAILED");
+  const result=await verifyOwnerPin({pin});
+  if(result.data?.owner!==true)throw Error("OWNER ACCESS DENIED");
+  accountMode="OWNER";ownerSession=true;ownerGodMode=false;
+  accountGate.style.display="none";
+  ownerPinBox.style.display="none";
+  ownerPinInput.value="";
+  status("OWNER ACCESS VERIFIED — CHOOSE ENTER GAME OR ENTER VR");
+ }catch(e){
+  loginMessage.textContent=e.code==="functions/resource-exhausted"
+   ?"TOO MANY ATTEMPTS — TRY AGAIN LATER"
+   :e.message||"OWNER ACCESS DENIED";
+  ownerPinInput.value="";
+ }finally{
+  submit.disabled=false;
+ }
+};
 
 /* PLAYER PROFILE */
 let money=Number(localStorage.getItem("redlineMoney")||0),health=100;
@@ -186,7 +265,35 @@ function showMenu(){
  addButton("PRACTICE MODE",1.0,()=>{mode="PRACTICE";screenText("PRACTICE MODE");status("PRACTICE MODE");});
  addButton("PUBLIC SERVER",.65,joinPublic);
  addButton("PRIVATE ROOMS",.3,showPrivate);
- addButton("ZOMBIE MODE",0,showZombieMenu);updateHUD();
+ addButton("ZOMBIE MODE",0,showZombieMenu);
+ if(ownerSession)addButton("OWNER PANEL",-.35,showOwnerPanel);
+ updateHUD();
+}
+function showOwnerPanel(){
+ if(!ownerSession){status("OWNER ACCESS REQUIRED");return;}
+ document.getElementById("crosshair").style.display="none";
+ clearButtons();screenText("REDLINE OWNER PANEL");
+ addButton(ownerGodMode?"GOD MODE: ON":"GOD MODE: OFF",1.45,()=>{
+  if(!ownerSession)return;
+  ownerGodMode=!ownerGodMode;
+  status("GOD MODE "+(ownerGodMode?"ENABLED":"DISABLED"));
+  showOwnerPanel();
+ });
+ addButton("ADD $10,000",1.05,()=>{
+  if(!ownerSession)return;
+  earnMoney(10000);
+  status("OWNER REWARD: $10,000");
+  showOwnerPanel();
+ });
+ addButton("UNLOCK ALL WEAPONS",.65,()=>{
+  if(!ownerSession)return;
+  unlockedWeapons=weaponList.map(w=>w.name);
+  equippedWeapon="MINIGUN";
+  savePlayerProfile();updateHUD();
+  status("ALL WEAPONS UNLOCKED");
+  showOwnerPanel();
+ });
+ addButton("BACK TO MAIN MENU",.25,showMenu);
 }
 function showPrivate(){
  clearButtons();screenText("PRIVATE ROOMS");
@@ -322,69 +429,55 @@ function segment(mesh,a,b){
 /* REMOTE PLAYER AVATARS */
 function createRemoteAvatar(){
  const group=new THREE.Group();
-
  const body=new THREE.Mesh(new THREE.SphereGeometry(.3,16,14),black);
  body.scale.set(.9,1.15,.72);
  body.position.y=.95;
  group.add(body);
-
  const avatarHead=new THREE.Mesh(new THREE.SphereGeometry(.19,16,14),black);
  avatarHead.position.set(0,1.48,0);
  group.add(avatarHead);
-
  const chestAccent=new THREE.Mesh(new THREE.BoxGeometry(.18,.055,.035),lava);
  chestAccent.position.set(0,1.02,-.215);
  group.add(chestAccent);
-
  for(let i=0;i<2;i++){
   const side=i===0?-1:1;
   const armGroup=new THREE.Group();
   const upper=new THREE.Mesh(new THREE.CylinderGeometry(.085,.105,.52,10),black);
   upper.position.y=-.25;
   armGroup.add(upper);
-
   const hand=new THREE.Mesh(new THREE.SphereGeometry(.105,12,10),black);
   hand.position.y=-.52;
   armGroup.add(hand);
-
   const band=new THREE.Mesh(new THREE.TorusGeometry(.09,.018,8,16),lava);
   band.rotation.x=Math.PI/2;
   band.position.y=-.36;
   armGroup.add(band);
-
   armGroup.position.set(side*.31,.92,0);
   armGroup.rotation.z=side*.28;
   group.add(armGroup);
  }
-
  const leftEye=new THREE.Mesh(new THREE.SphereGeometry(.025,8,8),lava);
  leftEye.position.set(-.07,1.5,-.17);
  group.add(leftEye);
  const rightEye=leftEye.clone();
  rightEye.position.x=.07;
  group.add(rightEye);
-
  scene.add(group);
  return group;
 }
 function updateRemotePlayers(){
  const active=new Set();
-
  for(const [uid,pos] of Object.entries(remotePlayers)){
   if(uid===auth.currentUser?.uid)continue;
   if(!Array.isArray(pos)||pos.length<3)continue;
-
   const x=Number(pos[0]),y=Number(pos[1]),z=Number(pos[2]);
   if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z))continue;
-
   active.add(uid);
   let avatar=remoteAvatarGroups[uid];
   if(!avatar)avatar=remoteAvatarGroups[uid]=createRemoteAvatar();
-
   avatar.position.set(x,y,z);
   avatar.rotation.y=Number(pos[3])||0;
  }
-
  for(const [uid,avatar] of Object.entries(remoteAvatarGroups)){
   if(!active.has(uid)){
    scene.remove(avatar);
@@ -978,6 +1071,7 @@ document.getElementById("fire").addEventListener("pointerdown",e=>{e.preventDefa
 const controllers=[];
 for(let i=0;i<2;i++){const c=renderer.xr.getController(i);c.addEventListener("select",shoot);rig.add(c);controllers.push(c);}
 document.getElementById("enterVR").onclick=async()=>{
+ if(accountMode==="NONE"){accountGate.style.display="flex";return;}
  try{
   const session=await navigator.xr.requestSession("immersive-vr",{optionalFeatures:["local-floor","hand-tracking"]});
   renderer.xr.setReferenceSpaceType("local-floor");await renderer.xr.setSession(session);
@@ -995,6 +1089,7 @@ if(navigator.xr)navigator.xr.isSessionSupported("immersive-vr").then(ok=>{if(ok)
 /* MOBILE */
 let mobile=false,yaw=0,pitch=0;
 document.getElementById("enter").onclick=()=>{
+ if(accountMode==="NONE"){accountGate.style.display="flex";return;}
  mobile=true;rig.position.set(0,0,-4.4);computer.visible=true;showMenu();
  document.getElementById("enter").style.display="none";document.getElementById("enterVR").style.display="none";
  document.getElementById("controls").style.display="block";document.getElementById("hud").style.display="block";
@@ -1046,6 +1141,7 @@ renderer.domElement.addEventListener("pointercancel",stopLook);
 /* MOVEMENT AND POSITION SYNC */
 const clock=new THREE.Clock();let previousSync=0;
 function updatePlayer(dt){
+ if(ownerSession&&ownerGodMode)health=100;
  if(!mobile&&!renderer.xr.isPresenting)return;
  const forward=new THREE.Vector3();camera.getWorldDirection(forward);forward.y=0;forward.normalize();
  const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
